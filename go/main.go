@@ -672,7 +672,7 @@ type ItemParam = struct {
 	requestAt    int64
 }
 
-func (h *Handler) obtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemParam) ([]int64, []*UserCard, []*UserItem, error) {
+func (h *Handler) bulkObtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemParam) ([]int64, []*UserCard, []*UserItem, error) {
 	// TODO: kari
 	userID := itemParams[0].userID
 	itemID := itemParams[0].itemID
@@ -721,7 +721,7 @@ func (h *Handler) obtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemParam)
 			}
 		}
 
-		query = "INSERT INTO users(id, isu_coin) VALUES(:id, :isu_coin) ON DUPLICATE KEY UPDATE isu_coin=VALUES(isu_coin)"
+		query = "INSERT INTO users(id, isu_coin, last_getreward_at, last_activated_at, registered_at, created_at, updated_at) VALUES(:id, :isu_coin, :last_getreward_at, :last_activated_at, :registered_at, :created_at, :updated_at) ON DUPLICATE KEY UPDATE isu_coin=VALUES(isu_coin)"
 		if _, err := tx.NamedExec(query, insertUsers); err != nil {
 			return nil, nil, nil, err
 		}
@@ -1565,7 +1565,7 @@ func (h *Handler) receivePresent(c echo.Context) error {
 	// itemTypeごとに実行
 	for k, v := range mapObtainPresents {
 		if k == 1 {
-			_, _, _, err = h.obtainItems(tx, k, v)
+			_, _, _, err = h.bulkObtainItems(tx, k, v)
 			if err != nil {
 				return errorResponse(c, http.StatusInternalServerError, err)
 			}
