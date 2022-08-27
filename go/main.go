@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"math"
 	"math/big"
@@ -93,8 +92,8 @@ func main() {
 	}()
 
 	for _, db := range dbs {
-		db.SetMaxOpenConns(10000)
-		db.SetMaxIdleConns(10000)
+		db.SetMaxOpenConns(100000)
+		db.SetMaxIdleConns(100000)
 		db.SetConnMaxLifetime(5 * time.Minute)
 	}
 
@@ -104,8 +103,8 @@ func main() {
 	}
 	defer adminDBx.Close()
 
-	adminDBx.SetMaxOpenConns(10000)
-	adminDBx.SetMaxIdleConns(10000)
+	adminDBx.SetMaxOpenConns(100000)
+	adminDBx.SetMaxIdleConns(100000)
 	adminDBx.SetConnMaxLifetime(5 * time.Minute)
 
 	// setting server
@@ -2378,11 +2377,7 @@ func getEnv(key, defaultVal string) string {
 
 // parseRequestBody parses request body.
 func parseRequestBody(c echo.Context, dist interface{}) error {
-	buf, err := io.ReadAll(c.Request().Body)
-	if err != nil {
-		return ErrInvalidRequestBody
-	}
-	if err = json.Unmarshal(buf, &dist); err != nil {
+	if err := json.NewDecoder(c.Request().Body).Decode(&dist); err != nil {
 		return ErrInvalidRequestBody
 	}
 	return nil
