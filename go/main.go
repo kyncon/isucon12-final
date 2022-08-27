@@ -339,7 +339,7 @@ func (h *Handler) checkSessionMiddleware(next echo.HandlerFunc) echo.HandlerFunc
 				}
 				return errorResponse(c, http.StatusInternalServerError, err)
 			}
-
+			sessionCacher.Put(userSession.ID, userSession)
 		}
 		if userSession.UserID != userID {
 			return errorResponse(c, http.StatusForbidden, ErrForbidden)
