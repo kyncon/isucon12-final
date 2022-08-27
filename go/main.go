@@ -75,27 +75,27 @@ func abs(s int64) int64 {
 
 type SessionCacher struct {
 	mu   sync.RWMutex
-	data map[int64]Session
+	data map[string]Session
 }
 
 func newSessionCacher() *SessionCacher {
-	return &SessionCacher{mu: sync.RWMutex{}, data: make(map[int64]Session)}
+	return &SessionCacher{mu: sync.RWMutex{}, data: make(map[string]Session)}
 }
 
-func (s *SessionCacher) Get(key int64) (Session, bool) {
+func (s *SessionCacher) Get(key string) (Session, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	res, ok := s.data[key]
 	return res, ok
 }
 
-func (s *SessionCacher) Put(key int64, value Session) {
+func (s *SessionCacher) Put(key string, value Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.data[key] = value
 }
 
-func (s *SessionCacher) Delete(key int64) {
+func (s *SessionCacher) Delete(key string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.data, key)
@@ -104,7 +104,7 @@ func (s *SessionCacher) Delete(key int64) {
 func (s *SessionCacher) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.data = make(map[int64]Session)
+	s.data = make(map[string]Session)
 }
 
 func main() {
@@ -323,13 +323,8 @@ func (h *Handler) checkSessionMiddleware(next echo.HandlerFunc) echo.HandlerFunc
 			return errorResponse(c, http.StatusInternalServerError, ErrGetRequestTime)
 		}
 
-		sID, err := strconv.ParseInt(sessID, 10, 64)
-		if err != nil {
-			return errorResponse(c, http.StatusUnauthorized, ErrUnauthorized)
-		}
-
 		var userSession Session
-		userSession, ok := sessionCacher.Get(sID)
+		userSession, ok := sessionCacher.Get(sessID)
 		if !ok {
 			query := "SELECT * FROM user_sessions WHERE session_id=? AND deleted_at IS NULL"
 			if err := h.adminDB.Get(userSession, query, sessID); err != nil {
@@ -339,7 +334,7 @@ func (h *Handler) checkSessionMiddleware(next echo.HandlerFunc) echo.HandlerFunc
 				}
 				return errorResponse(c, http.StatusInternalServerError, err)
 			}
-			sessionCacher.Put(userSession.ID, userSession)
+			sessionCacher.Put(userSession.SessionID, userSession)
 		}
 		if userSession.UserID != userID {
 			return errorResponse(c, http.StatusForbidden, ErrForbidden)
@@ -350,7 +345,7 @@ func (h *Handler) checkSessionMiddleware(next echo.HandlerFunc) echo.HandlerFunc
 			if _, err = h.adminDB.Exec(query, requestAt, sessID); err != nil {
 				return errorResponse(c, http.StatusInternalServerError, err)
 			}
-			sessionCacher.Delete(sID)
+			sessionCacher.Delete(sessID)
 			return errorResponse(c, http.StatusUnauthorized, ErrExpiredSession)
 		}
 
@@ -1232,7 +1227,7 @@ func (h *Handler) createUser(c echo.Context) error {
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
-	sessionCacher.Put(sID, *sess)
+	sessionCacher.Put(sessID, *sess)
 
 	return successResponse(c, &CreateUserResponse{
 		UserID:           user.ID,
@@ -1326,7 +1321,7 @@ func (h *Handler) login(c echo.Context) error {
 	if _, err = h.adminDB.Exec(query, sess.ID, sess.UserID, sess.SessionID, sess.CreatedAt, sess.UpdatedAt, sess.ExpiredAt); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
-	sessionCacher.Put(sID, *sess)
+	sessionCacher.Put(sessID, *sess)
 
 	// すでにログインしているユーザはログイン処理をしない
 	if isCompleteTodayLogin(time.Unix(user.LastActivatedAt, 0), time.Unix(requestAt, 0)) {
