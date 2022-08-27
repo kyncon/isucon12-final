@@ -1552,7 +1552,7 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 
 	// cardに情報を埋めていく
 	card.BaseAmountPerSec = cardData.BaseAmountPerSec
-	card.MaxLevel = cardData.MaxAmountPerSec
+	card.MaxLevel = cardData.MaxLevel
 	card.MaxAmountPerSec = cardData.MaxAmountPerSec
 	card.BaseExpPerLevel = cardData.BaseExpPerLevel
 
