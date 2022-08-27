@@ -1,6 +1,6 @@
 # TODO: APP_HOMEとAPP_DIRECTORYなど、埋める
 APP_HOME:=/home/isucon/webapp
-APP_DIRECTORY:=$(APP_HOME)/webapp/go
+APP_DIRECTORY:=$(APP_HOME)/go
 APP_BUILD_COMMAND:=go build -o isuconquest
 SYSTEMCTL_APP:=isuconquest.go.service
 
