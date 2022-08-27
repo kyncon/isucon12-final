@@ -117,8 +117,7 @@ log-nginx-diff:
 SLP_OPTIONS=--bundle-values --bundle-where-in --sort=sum-query-time -r
 
 log-mysql-diff:
-	sudo cat $(MYSQL_LOG) | slp $(SLP_OPTIONS) --dump /tmp/mysql_slp.yaml
-	cat /tmp/mysql_slp.yaml | $(SLACKCAT_RAW_CMD)
+	sudo cat $(MYSQL_LOG) | slp $(SLP_OPTIONS) --dump /tmp/mysql_slp.yaml | $(SLACKCAT_RAW_CMD)
 	-sudo slp diff /tmp/mysql_slp_$(LAST_MERGED_BRANCH)_latest.yaml /tmp/mysql_slp.yaml --show-footers $(SLP_OPTIONS) | $(SLACKCAT_RAW_CMD)
 	-sudo mv /tmp/mysql_slp.yaml /tmp/mysql_slp_$(shell echo $(BRANCH) | sed -e "s@/@-@g")_latest.yaml
 
