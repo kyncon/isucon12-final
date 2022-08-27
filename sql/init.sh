@@ -20,7 +20,7 @@ mysql -u"$ISUCON_DB_USER" \
 		--port "$ISUCON_DB_PORT" \
 		"$ISUCON_DB_NAME" < 4_alldata_exclude_user_presents.sql
 
-echo "delete from user_presents where id > 100000000000" | mysql -u"$ISUCON_DB_USER" \
+echo "delete from user_presents where id > 100000000000 or id < 0" | mysql -u"$ISUCON_DB_USER" \
 		-p"$ISUCON_DB_PASSWORD" \
 		--host "$ISUCON_DB_HOST" \
 		--port "$ISUCON_DB_PORT" \
