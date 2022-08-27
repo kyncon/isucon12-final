@@ -1959,7 +1959,7 @@ func (h *Handler) generateID() (int64, error) {
 	i := new(big.Int)
 	uuidValue := uuid.New().String()
 	i.SetString(strings.Replace(uuidValue, "-", "", 4), 16)
-	return i.Int64(), nil
+	return int64(i.Uint64()), nil
 }
 
 // generateSessionID
