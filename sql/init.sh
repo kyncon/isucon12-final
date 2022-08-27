@@ -29,9 +29,9 @@ echo "delete from user_presents where id > 100000000000 or id < 0" | mysql -u"$I
 DIR=`mysql -u"$ISUCON_DB_USER" -p"$ISUCON_DB_PASSWORD" -h "$ISUCON_DB_HOST" -Ns -e "show variables like 'secure_file_priv'" | cut -f2`
 SECURE_DIR=${DIR:-/var/lib/mysql-files/}
 
-sudo cp 5_user_presents_not_receive_data.tsv ${SECURE_DIR}
+sudo cp 5_user_presents_not_receive_data.tsv ${SECURE_DIR}/${ISUCON_DB_HOST}.tsv
 
-echo "LOAD DATA LOCAL INFILE '${SECURE_DIR}5_user_presents_not_receive_data.tsv' REPLACE INTO TABLE user_presents FIELDS ESCAPED BY '|' IGNORE 1 LINES ;" | sudo mysql -u"$ISUCON_DB_USER" \
+echo "LOAD DATA LOCAL INFILE '${SECURE_DIR}/${ISUCON_DB_HOST}.tsv' REPLACE INTO TABLE user_presents FIELDS ESCAPED BY '|' IGNORE 1 LINES ;" | sudo mysql -u"$ISUCON_DB_USER" \
         -p"$ISUCON_DB_PASSWORD" \
         --host "$ISUCON_DB_HOST" \
         --port "$ISUCON_DB_PORT" \
