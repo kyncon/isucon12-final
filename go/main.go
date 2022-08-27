@@ -519,6 +519,7 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 		} else {
 			return nil, fmt.Errorf("no parameter error")
 		}
+		initBonus := lbp.initBonus
 		// ボーナスの進捗取得
 		userBonus := lbp.userBonus
 
@@ -566,42 +567,6 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 		default:
 			return nil, ErrInvalidItemType
 		}
-	}
-
-	// 配布処理
-	// itemTypeごとに実行
-	for k, v := range mapObtainItems {
-		_, _, _, err = h.bulkObtainItems(tx, k, v)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// TODO: N+1
-	for _, bonus := range loginBonuses {
-		var lbp LbParam
-		if v, ok := mapLoginBonusParms[bonus.ID]; ok {
-			lbp = v
-		} else {
-			return nil, fmt.Errorf("no parameter error")
-		}
-		initBonus := lbp.initBonus
-		// ボーナスの進捗取得
-		userBonus := lbp.userBonus
-
-		// ボーナス進捗更新
-		if userBonus.LastRewardSequence < bonus.ColumnCount {
-			userBonus.LastRewardSequence++
-		} else {
-			if bonus.Looped {
-				userBonus.LoopCount += 1
-				userBonus.LastRewardSequence = 1
-			} else {
-				// 上限まで付与完了
-				continue
-			}
-		}
-		userBonus.UpdatedAt = requestAt
 
 		// 進捗の保存
 		if initBonus {
@@ -615,9 +580,19 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 				return nil, err
 			}
 		}
-
 		sendLoginBonuses = append(sendLoginBonuses, userBonus)
 	}
+
+	// 配布処理
+	// itemTypeごとに実行
+	for k, v := range mapObtainItems {
+		_, _, _, err = h.bulkObtainItems(tx, k, v)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// query = "INSERT INTO user_login_bonuses(id, user_id, login_bonus_id, last_reward_sequence, loop_count, created_at, updated_at) VALUES (:id, :user_id, :login_bonus_id, :last_reward_sequence, :loop_count, :created_at, :updated_at) ON DUPLICATE KEY UPDATE last_reward_sequence=?, loop_count=?, updated_at=? WHERE id=?"
 
 	return sendLoginBonuses, nil
 }
