@@ -1521,9 +1521,8 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 	// get target card
 	card := new(TargetUserCardData)
 	query := `
-	SELECT uc.id , uc.user_id , uc.card_id , uc.amount_per_sec , uc.level, uc.total_exp, im.amount_per_sec as 'base_amount_per_sec', im.max_level , im.max_amount_per_sec , im.base_exp_per_level
+	SELECT uc.id , uc.user_id , uc.card_id , uc.amount_per_sec , uc.level, uc.total_exp
 	FROM user_cards as uc
-	INNER JOIN item_masters as im ON uc.card_id = im.id
 	WHERE uc.id = ? AND uc.user_id=?
 	`
 	if err = h.DB.Get(card, query, cardID, userID); err != nil {
@@ -1542,9 +1541,9 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 	query = `
 	SELECT im.amount_per_sec as 'base_amount_per_sec', im.max_level , im.max_amount_per_sec , im.base_exp_per_level
 	FROM item_masters as im
-	WHERE uc.id = ?
+	WHERE im.id = ?
 	`
-	if err = h.DB.Get(&cardData, query, cardID); err != nil {
+	if err = h.DB.Get(&cardData, query, card.CardID); err != nil {
 		if err == sql.ErrNoRows {
 			return errorResponse(c, http.StatusNotFound, err)
 		}
