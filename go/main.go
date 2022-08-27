@@ -1537,11 +1537,16 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 		}
 	}
 
+	userItemIDTOData := make(map[int64]ConsumeUserItemData, len(itemIDToData))
+	for _, i := range itemIDToData {
+		userItemIDTOData[i.ID] = i
+	}
+
 	// 消費アイテムの所持チェック
 	items := make([]*ConsumeUserItemData, 0)
 	for _, v := range req.Items {
 		item := new(ConsumeUserItemData)
-		d, ok := itemIDToData[v.ID]
+		d, ok := userItemIDTOData[v.ID]
 		if !ok {
 			return errorResponse(c, http.StatusNotFound, fmt.Errorf("not found"))
 		}
