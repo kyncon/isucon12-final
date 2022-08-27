@@ -949,7 +949,7 @@ func (h *Handler) bulkObtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemPa
 
 // initialize 初期化処理
 // POST /initialize
-func (h *handler) initialize(c echo.Context) error {
+func (h *Handler) initialize(c echo.Context) error {
 	dbx, err := connectDB(true)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
