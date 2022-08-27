@@ -101,10 +101,10 @@ echo-branch:
 log-app:
 	sudo systemctl status $(SYSTEMCTL_APP) | $(SLACKCAT_RAW_CMD)
 
-ALP_OPTIONS=--sort=sum -r
+ALP_OPTIONS=--sort=sum -r -m "$(ALP_FORMAT)"
 
 log-nginx:
-	sudo cat $(NGINX_LOG) | alp ltsv -m "$(ALP_FORMAT)" $(ALP_OPTIONS) | $(SLACKCAT_RAW_CMD)
+	sudo cat $(NGINX_LOG) | alp ltsv $(ALP_OPTIONS) | $(SLACKCAT_RAW_CMD)
 	-[ -s $(NGINX_ERR_LOG) ] && sudo cat $(NGINX_ERR_LOG) | $(SLACKCAT_RAW_CMD)
 
 DEFAULT_BRANCH=$(shell git remote show origin | sed -n '/HEAD branch/s/.*: //p')
