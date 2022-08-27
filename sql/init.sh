@@ -35,4 +35,5 @@ echo "LOAD DATA LOCAL INFILE '${SECURE_DIR}5_user_presents_not_receive_data.tsv'
         -p"$ISUCON_DB_PASSWORD" \
         --host "$ISUCON_DB_HOST" \
         --port "$ISUCON_DB_PORT" \
+        --enable-local-infile \
         "$ISUCON_DB_NAME"
