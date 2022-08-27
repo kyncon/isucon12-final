@@ -50,6 +50,7 @@ type Handler struct {
 }
 
 func main() {
+	initProfiler()
 	rand.Seed(time.Now().UnixNano())
 	time.Local = time.FixedZone("Local", 9*60*60)
 
@@ -1213,7 +1214,7 @@ func (h *Handler) listPresent(c echo.Context) error {
 	offset := PresentCountPerPage * (n - 1)
 	presentList := []*UserPresent{}
 	query := `
-	SELECT * FROM user_presents 
+	SELECT * FROM user_presents
 	WHERE user_id = ? AND deleted_at IS NULL
 	ORDER BY created_at DESC, id
 	LIMIT ? OFFSET ?`
@@ -1619,7 +1620,6 @@ type TargetUserCardData struct {
 // updateDeck 装備変更
 // POST /user/{userID}/card
 func (h *Handler) updateDeck(c echo.Context) error {
-
 	userID, err := getUserID(c)
 	if err != nil {
 		return errorResponse(c, http.StatusBadRequest, err)
