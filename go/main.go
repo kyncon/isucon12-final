@@ -673,12 +673,6 @@ type ItemParam = struct {
 }
 
 func (h *Handler) bulkObtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemParam) ([]int64, []*UserCard, []*UserItem, error) {
-	// TODO: kari
-	userID := itemParams[0].userID
-	itemID := itemParams[0].itemID
-	obtainAmount := itemParams[0].obtainAmount
-	requestAt := itemParams[0].requestAt
-
 	obtainCoins := make([]int64, 0)
 	obtainCards := make([]*UserCard, 0)
 	obtainItems := make([]*UserItem, 0)
@@ -687,6 +681,7 @@ func (h *Handler) bulkObtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemPa
 	userIds := make([]int64, 0, len(itemParams))
 	userTotalCoin := make(map[int64]int64, len(itemParams))
 	itemIds := make([]int64, 0, len(itemParams))
+	userToItems := make(map[int64]map[int64]ItemParam, len(itemParams))
 	for _, ip := range itemParams {
 		// coin
 		if _, ok := userTotalCoin[ip.userID]; ok {
@@ -696,8 +691,26 @@ func (h *Handler) bulkObtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemPa
 			userIds = append(userIds, ip.userID)
 		}
 
-		// card(ハンマー)
+		// card
 		itemIds = append(itemIds, ip.itemID)
+		if uti, ok := userToItems[ip.userID]; ok {
+			if v, ok := uti[ip.itemID]; ok {
+				newv := ItemParam{
+					userID:       ip.userID,
+					itemID:       ip.itemID,
+					obtainAmount: v.obtainAmount + ip.obtainAmount,
+					requestAt:    ip.requestAt,
+				}
+				uti[ip.itemID] = newv
+			} else {
+				uti[ip.itemID] = ip
+			}
+			userToItems[ip.userID] = uti
+		} else {
+			m := make(map[int64]ItemParam, len(itemParams))
+			m[ip.itemID] = ip
+			userToItems[ip.userID] = m
+		}
 	}
 
 	switch itemType {
@@ -766,8 +779,8 @@ func (h *Handler) bulkObtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemPa
 					AmountPerSec: *item.AmountPerSec,
 					Level:        1,
 					TotalExp:     0,
-					CreatedAt:    requestAt,
-					UpdatedAt:    requestAt,
+					CreatedAt:    ip.requestAt,
+					UpdatedAt:    ip.requestAt,
 				}
 				insertCards = append(insertCards, card)
 				// 使っていない
@@ -783,53 +796,74 @@ func (h *Handler) bulkObtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemPa
 		}
 
 	case 3, 4: // 強化素材
-		query := "SELECT * FROM item_masters WHERE id=? AND item_type=?"
-		item := new(ItemMaster)
-		if err := tx.Get(item, query, itemID, itemType); err != nil {
+		orgQuery := "SELECT * FROM item_masters WHERE item_type=? AND id IN (?)"
+		query, params, err := sqlx.In(orgQuery, itemType, itemIds)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		var items []ItemMaster
+		if err = tx.Select(&items, query, params...); err != nil {
 			if err == sql.ErrNoRows {
 				return nil, nil, nil, ErrItemNotFound
 			}
 			return nil, nil, nil, err
 		}
+
 		// 所持数取得
-		query = "SELECT * FROM user_items WHERE user_id=? AND item_id=?"
-		uitem := new(UserItem)
-		if err := tx.Get(uitem, query, userID, item.ID); err != nil {
+		orgQuery = "SELECT * FROM user_items WHERE user_id IN (?) AND item_id IN (?)"
+		query, params, err = sqlx.In(orgQuery, userIds, itemIds)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		var userItems []UserItem
+		if err = tx.Select(&userItems, query, params...); err != nil {
 			if err != sql.ErrNoRows {
 				return nil, nil, nil, err
 			}
-			uitem = nil
 		}
 
-		if uitem == nil { // 新規作成
-			uitemID, err := h.generateID()
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			uitem = &UserItem{
-				ID:        uitemID,
-				UserID:    userID,
-				ItemType:  item.ItemType,
-				ItemID:    item.ID,
-				Amount:    int(obtainAmount),
-				CreatedAt: requestAt,
-				UpdatedAt: requestAt,
-			}
-			query = "INSERT INTO user_items(id, user_id, item_id, item_type, amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-			if _, err := tx.Exec(query, uitem.ID, userID, uitem.ItemID, uitem.ItemType, uitem.Amount, requestAt, requestAt); err != nil {
-				return nil, nil, nil, err
-			}
-
-		} else { // 更新
-			uitem.Amount += int(obtainAmount)
-			uitem.UpdatedAt = requestAt
-			query = "UPDATE user_items SET amount=?, updated_at=? WHERE id=?"
-			if _, err := tx.Exec(query, uitem.Amount, uitem.UpdatedAt, uitem.ID); err != nil {
-				return nil, nil, nil, err
+		itemIdToUserItem := make(map[int64]UserItem, len(userItems))
+		for _, ui := range userItems {
+			if _, ok := itemIdToUserItem[ui.ItemID]; !ok {
+				itemIdToUserItem[ui.ItemID] = ui
 			}
 		}
 
-		obtainItems = append(obtainItems, uitem)
+		insertUserItems := make([]UserItem, 0, len(itemParams))
+		for _, uid := range userIds {
+			if reqItems, ok := userToItems[uid]; ok {
+				for k, ip := range reqItems {
+					var uitem UserItem
+					if ui, ok := itemIdToUserItem[k]; ok { // 更新
+						uitem = ui
+						uitem.Amount += int(ip.obtainAmount)
+						uitem.UpdatedAt = ip.requestAt
+					} else { // 新規作成
+						uitemID, err := h.generateID()
+						if err != nil {
+							return nil, nil, nil, err
+						}
+						uitem = UserItem{
+							ID:        uitemID,
+							UserID:    ip.userID,
+							ItemType:  itemType,
+							ItemID:    ip.itemID,
+							Amount:    int(ip.obtainAmount),
+							CreatedAt: ip.requestAt,
+							UpdatedAt: ip.requestAt,
+						}
+					}
+					insertUserItems = append(insertUserItems, uitem)
+					obtainItems = append(obtainItems, &uitem)
+				}
+			}
+		}
+
+		// query = "UPDATE user_items SET amount=?, updated_at=? WHERE id=?"
+		query = "INSERT INTO user_items(`id`, `user_id`, `item_type`, `item_id`, `amount`, `created_at`, `updated_at`) VALUES(:id, :user_id, :item_type, :item_id, :amount, :created_at, :updated_at) ON DUPLICATE KEY UPDATE amount=VALUE(amount), updated_at=VALUE(updated_at)"
+		if _, err := tx.NamedExec(query, insertUserItems); err != nil {
+			return nil, nil, nil, err
+		}
 
 	default:
 		return nil, nil, nil, ErrInvalidItemType
