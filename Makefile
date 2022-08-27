@@ -90,7 +90,7 @@ log:
 # Send log to slack
 # Set log-nginx or log-mysql.
 log-server1: echo-branch log-app log-nginx log-nginx-diff
-log-server2: log-mysql log-mysql-diff
+log-server2: log-mysql-diff
 log-server3:
 log-server4:
 log-server5:
@@ -116,11 +116,8 @@ log-nginx-diff:
 
 SLP_OPTIONS=--bundle-values --bundle-where-in --sort=sum-query-time -r
 
-log-mysql:
-	sudo cat $(MYSQL_LOG) | slp $(SLP_OPTIONS) | $(SLACKCAT_RAW_CMD)
-
 log-mysql-diff:
-	sudo cat $(MYSQL_LOG) | slp $(SLP_OPTIONS) --dump /tmp/mysql_slp.yaml
+	sudo cat $(MYSQL_LOG) | slp $(SLP_OPTIONS) --dump /tmp/mysql_slp.yaml | $(SLACKCAT_RAW_CMD)
 	-sudo slp diff /tmp/mysql_slp_$(LAST_MERGED_BRANCH)_latest.yaml /tmp/mysql_slp.yaml --show-footers $(SLP_OPTIONS) | $(SLACKCAT_RAW_CMD)
 	-sudo mv /tmp/mysql_slp.yaml /tmp/mysql_slp_$(shell echo $(BRANCH) | sed -e "s@/@-@g")_latest.yaml
 
