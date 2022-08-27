@@ -749,7 +749,12 @@ func initialize(c echo.Context) error {
 	defer dbx.Close()
 
 	eg, ctx := errgroup.WithContext(c.Request().Context())
-	for _, env := range []string{"ISUCON_ADMIN_DB_HOST", "ISUCON_DB_HOST"} {
+	envs := make([]string, 0)
+	for i := 0; i < DBNUM; i++ {
+		envs = append(envs, fmt.Sprintf("ISUCON_DB_HOST%d", i+1))
+	}
+	envs = append(envs, "ISUCON_ADMIN_DB_HOST")
+	for _, env := range envs {
 		env := env
 		eg.Go(func() error {
 			cmd := exec.CommandContext(ctx, "/bin/sh", "-c", SQLDirectory+"init.sh "+getEnv(env, "127.0.0.1"))
