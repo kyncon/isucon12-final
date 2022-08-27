@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -53,6 +54,10 @@ const (
 	SQLDirectory string = "../sql/"
 )
 
+var (
+	sessionCacher = newSessionCacher()
+)
+
 type Handler struct {
 	dbs     []*sqlx.DB
 	adminDB *sqlx.DB
@@ -68,6 +73,40 @@ func abs(s int64) int64 {
 		return -s
 	}
 	return s
+}
+
+type SessionCacher struct {
+	mu   sync.RWMutex
+	data map[string]Session
+}
+
+func newSessionCacher() *SessionCacher {
+	return &SessionCacher{mu: sync.RWMutex{}, data: make(map[string]Session)}
+}
+
+func (s *SessionCacher) Get(key string) (Session, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	res, ok := s.data[key]
+	return res, ok
+}
+
+func (s *SessionCacher) Put(key string, value Session) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data[key] = value
+}
+
+func (s *SessionCacher) Delete(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.data, key)
+}
+
+func (s *SessionCacher) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data = make(map[string]Session)
 }
 
 func main() {
@@ -290,25 +329,21 @@ func (h *Handler) checkSessionMiddleware(next echo.HandlerFunc) echo.HandlerFunc
 			return errorResponse(c, http.StatusInternalServerError, ErrGetRequestTime)
 		}
 
-		userSession := new(Session)
-		query := "SELECT * FROM user_sessions WHERE session_id=? AND deleted_at IS NULL"
-		if err := h.adminDB.Get(userSession, query, sessID); err != nil {
-			log.Printf("sessionにデータがない, %s, %d", sessID, userID)
-			if err == sql.ErrNoRows {
-				return errorResponse(c, http.StatusUnauthorized, ErrUnauthorized)
-			}
-			return errorResponse(c, http.StatusInternalServerError, err)
+		var userSession Session
+		userSession, ok := sessionCacher.Get(sessID)
+		if !ok {
+			return errorResponse(c, http.StatusUnauthorized, ErrUnauthorized)
 		}
-
 		if userSession.UserID != userID {
 			return errorResponse(c, http.StatusForbidden, ErrForbidden)
 		}
 
 		if userSession.ExpiredAt < requestAt {
-			query = "UPDATE user_sessions SET deleted_at=? WHERE session_id=?"
+			query := "UPDATE user_sessions SET deleted_at=? WHERE session_id=?"
 			if _, err = h.adminDB.Exec(query, requestAt, sessID); err != nil {
 				return errorResponse(c, http.StatusInternalServerError, err)
 			}
+			sessionCacher.Delete(sessID)
 			return errorResponse(c, http.StatusUnauthorized, ErrExpiredSession)
 		}
 
@@ -1027,6 +1062,7 @@ func (h *Handler) initialize(c echo.Context) error {
 		return err
 	}
 
+	sessionCacher.Reset()
 	gachaItemMaster := make([]*GachaItemMaster, 0, 1000)
 	err = h.adminDB.Select(&gachaItemMaster, "SELECT * FROM gacha_item_masters ORDER BY id")
 	if err != nil {
@@ -1195,6 +1231,7 @@ func (h *Handler) createUser(c echo.Context) error {
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
+	sessionCacher.Put(sessID, *sess)
 
 	return successResponse(c, &CreateUserResponse{
 		UserID:           user.ID,
@@ -1263,7 +1300,6 @@ func (h *Handler) login(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 	defer tx.Rollback() //nolint:errcheck
-
 	// sessionを更新
 	query = "UPDATE user_sessions SET deleted_at=? WHERE user_id=? AND deleted_at IS NULL"
 	if _, err = h.adminDB.Exec(query, requestAt, req.UserID); err != nil {
@@ -1289,6 +1325,7 @@ func (h *Handler) login(c echo.Context) error {
 	if _, err = h.adminDB.Exec(query, sess.ID, sess.UserID, sess.SessionID, sess.CreatedAt, sess.UpdatedAt, sess.ExpiredAt); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
+	sessionCacher.Put(sessID, *sess)
 
 	// すでにログインしているユーザはログイン処理をしない
 	if isCompleteTodayLogin(time.Unix(user.LastActivatedAt, 0), time.Unix(requestAt, 0)) {
