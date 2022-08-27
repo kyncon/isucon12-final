@@ -1486,9 +1486,6 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, fmt.Errorf("target card is max level"))
 	}
 
-	// 消費アイテムの所持チェック
-	items := make([]*ConsumeUserItemData, 0)
-
 	itemIDs := make([]int64, len(req.Items))
 	for i, item := range req.Items {
 		itemIDs[i] = item.ID
@@ -1537,6 +1534,8 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 		}
 	}
 
+	// 消費アイテムの所持チェック
+	items := make([]*ConsumeUserItemData, 0)
 	for _, v := range req.Items {
 		item := new(ConsumeUserItemData)
 		d, ok := itemIDToData[v.ID]
