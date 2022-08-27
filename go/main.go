@@ -662,6 +662,154 @@ func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID int64, itemType int, ob
 	return obtainCoins, obtainCards, obtainItems, nil
 }
 
+// obtainItems 一括アイテム付与処理
+type ItemParam = struct {
+	userID       int64
+	itemID       int64
+	obtainAmount int64
+	requestAt    int64
+}
+
+func (h *Handler) obtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemParam) ([]int64, []*UserCard, []*UserItem, error) {
+	// TODO: kari
+	userID := itemParams[0].userID
+	itemID := itemParams[0].itemID
+	obtainAmount := itemParams[0].obtainAmount
+	requestAt := itemParams[0].requestAt
+
+	obtainCoins := make([]int64, 0)
+	obtainCards := make([]*UserCard, 0)
+	obtainItems := make([]*UserItem, 0)
+
+	// junbi
+	userIds := make([]int64, 0, len(itemParams))
+	userTotalCoin := make(map[int64]int64, len(itemParams))
+	for _, ip := range itemParams {
+		if _, ok := userTotalCoin[ip.userID]; ok {
+			userTotalCoin[ip.userID] += ip.obtainAmount
+		} else {
+			userTotalCoin[ip.userID] = 0
+			userIds = append(userIds, ip.userID)
+		}
+	}
+
+	switch itemType {
+	case 1: // coin
+		orgQuery := "SELECT * FROM users WHERE id IN (?)"
+		query, params, err := sqlx.In(orgQuery, userIds)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		var users []User
+		if err = tx.Select(&users, query, params...); err != nil {
+			if err == sql.ErrNoRows {
+				return nil, nil, nil, ErrUserNotFound
+			}
+			return nil, nil, nil, err
+		}
+
+		insertUsers := make([]User, 0, len(users))
+		for _, u := range users {
+			if v, ok := userTotalCoin[u.ID]; ok {
+				tmpu := u
+				tmpu.IsuCoin = tmpu.IsuCoin + v
+				insertUsers = append(insertUsers, tmpu)
+				// 正確な値ではないが使っていないので一旦これで逃げる
+				obtainCoins = append(obtainCoins, v)
+			}
+		}
+
+		query = "INSERT INTO users(id, last_activated_at, registered_at, last_getreward_at, created_at, updated_at) VALUES(:id, :last_activated_at, :registered_at, :last_getreward_at, :created_at, :updated_at) ON DUPLICATE KEY UPDATE isu_coin=VALUES(isu_coin)"
+		if _, err := tx.NamedExec(query, insertUsers); err != nil {
+			return nil, nil, nil, err
+		}
+
+	case 2: // card(ハンマー)
+		query := "SELECT * FROM item_masters WHERE id=? AND item_type=?"
+		item := new(ItemMaster)
+		if err := tx.Get(item, query, itemID, itemType); err != nil {
+			if err == sql.ErrNoRows {
+				return nil, nil, nil, ErrItemNotFound
+			}
+			return nil, nil, nil, err
+		}
+
+		cID, err := h.generateID()
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		card := &UserCard{
+			ID:           cID,
+			UserID:       userID,
+			CardID:       item.ID,
+			AmountPerSec: *item.AmountPerSec,
+			Level:        1,
+			TotalExp:     0,
+			CreatedAt:    requestAt,
+			UpdatedAt:    requestAt,
+		}
+		query = "INSERT INTO user_cards(id, user_id, card_id, amount_per_sec, level, total_exp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+		if _, err := tx.Exec(query, card.ID, card.UserID, card.CardID, card.AmountPerSec, card.Level, card.TotalExp, card.CreatedAt, card.UpdatedAt); err != nil {
+			return nil, nil, nil, err
+		}
+		obtainCards = append(obtainCards, card)
+
+	case 3, 4: // 強化素材
+		query := "SELECT * FROM item_masters WHERE id=? AND item_type=?"
+		item := new(ItemMaster)
+		if err := tx.Get(item, query, itemID, itemType); err != nil {
+			if err == sql.ErrNoRows {
+				return nil, nil, nil, ErrItemNotFound
+			}
+			return nil, nil, nil, err
+		}
+		// 所持数取得
+		query = "SELECT * FROM user_items WHERE user_id=? AND item_id=?"
+		uitem := new(UserItem)
+		if err := tx.Get(uitem, query, userID, item.ID); err != nil {
+			if err != sql.ErrNoRows {
+				return nil, nil, nil, err
+			}
+			uitem = nil
+		}
+
+		if uitem == nil { // 新規作成
+			uitemID, err := h.generateID()
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			uitem = &UserItem{
+				ID:        uitemID,
+				UserID:    userID,
+				ItemType:  item.ItemType,
+				ItemID:    item.ID,
+				Amount:    int(obtainAmount),
+				CreatedAt: requestAt,
+				UpdatedAt: requestAt,
+			}
+			query = "INSERT INTO user_items(id, user_id, item_id, item_type, amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+			if _, err := tx.Exec(query, uitem.ID, userID, uitem.ItemID, uitem.ItemType, uitem.Amount, requestAt, requestAt); err != nil {
+				return nil, nil, nil, err
+			}
+
+		} else { // 更新
+			uitem.Amount += int(obtainAmount)
+			uitem.UpdatedAt = requestAt
+			query = "UPDATE user_items SET amount=?, updated_at=? WHERE id=?"
+			if _, err := tx.Exec(query, uitem.Amount, uitem.UpdatedAt, uitem.ID); err != nil {
+				return nil, nil, nil, err
+			}
+		}
+
+		obtainItems = append(obtainItems, uitem)
+
+	default:
+		return nil, nil, nil, ErrInvalidItemType
+	}
+
+	return obtainCoins, obtainCards, obtainItems, nil
+}
+
 // initialize 初期化処理
 // POST /initialize
 func initialize(c echo.Context) error {
@@ -1362,12 +1510,43 @@ func (h *Handler) receivePresent(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
+	// itemTypeごとにまとめる
+	mapObtainPresents := make(map[int][]ItemParam, 4)
+	for i := range obtainPresent {
+		obtainPresent[i].UpdatedAt = requestAt
+		obtainPresent[i].DeletedAt = &requestAt
+		v := obtainPresent[i]
+
+		ip := ItemParam{
+			userID:       v.UserID,
+			itemID:       v.ItemID,
+			obtainAmount: int64(v.Amount),
+			requestAt:    requestAt,
+		}
+		switch v.ItemType {
+		case 1, 2, 3, 4:
+			if mop, ok := mapObtainPresents[v.ItemType]; ok {
+				newips := mop
+				newips = append(newips, ip)
+				mapObtainPresents[v.ItemType] = newips
+			} else {
+				mapObtainPresents[v.ItemType] = []ItemParam{ip}
+			}
+		default:
+			return errorResponse(c, http.StatusBadRequest, err)
+		}
+	}
+
 	// 配布処理
 	// TODO: bulk update
 	for i := range obtainPresent {
 		obtainPresent[i].UpdatedAt = requestAt
 		obtainPresent[i].DeletedAt = &requestAt
 		v := obtainPresent[i]
+
+		if v.ItemType == 1 {
+			continue
+		}
 
 		_, _, _, err = h.obtainItem(tx, v.UserID, v.ItemID, v.ItemType, int64(v.Amount), requestAt)
 		if err != nil {
@@ -1378,6 +1557,16 @@ func (h *Handler) receivePresent(c echo.Context) error {
 				return errorResponse(c, http.StatusBadRequest, err)
 			}
 			return errorResponse(c, http.StatusInternalServerError, err)
+		}
+	}
+
+	// itemTypeごとに実行
+	for k, v := range mapObtainPresents {
+		if k == 1 {
+			_, _, _, err = h.obtainItems(tx, k, v)
+			if err != nil {
+				return errorResponse(c, http.StatusInternalServerError, err)
+			}
 		}
 	}
 
