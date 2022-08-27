@@ -48,8 +48,8 @@ build:
 	$(SSH_COMMAND) $(SERVER5) 'cd $(APP_HOME) && source ~/.profile && git fetch -p && git checkout $(BRANCH) && git pull origin $(BRANCH) && make build-server5 BRANCH:=$(BRANCH)'
 
 # Set app, mysql and nginx.
-build-server1: build-app build-nginx build-mysql
-build-server2: stop-app
+build-server1: build-app build-nginx
+build-server2: stop-app build-mysql
 build-server3: stop-app
 build-server4: stop-app
 build-server5: stop-app
@@ -64,7 +64,6 @@ build-app:
 
 stop-app:
 	sudo systemctl stop $(SYSTEMCTL_APP)
-	sudo systemctl disable $(SYSTEMCTL_APP)
 	sudo systemctl disable $(SYSTEMCTL_APP)
 
 build-nginx:
@@ -90,8 +89,8 @@ log:
 
 # Send log to slack
 # Set log-nginx or log-mysql.
-log-server1: echo-branch log-app log-mysql log-mysql-diff log-nginx log-nginx-diff
-log-server2:
+log-server1: echo-branch log-app log-nginx log-nginx-diff
+log-server2: log-mysql log-mysql-diff
 log-server3:
 log-server4:
 log-server5:
