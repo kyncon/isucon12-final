@@ -721,7 +721,7 @@ func (h *Handler) obtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemParam)
 			}
 		}
 
-		query = "INSERT INTO users(id, last_activated_at, registered_at, last_getreward_at, created_at, updated_at) VALUES(:id, :last_activated_at, :registered_at, :last_getreward_at, :created_at, :updated_at) ON DUPLICATE KEY UPDATE isu_coin=VALUES(isu_coin)"
+		query = "INSERT INTO users(id, isu_coin) VALUES(:id, :isu_coin) ON DUPLICATE KEY UPDATE isu_coin=VALUES(isu_coin)"
 		if _, err := tx.NamedExec(query, insertUsers); err != nil {
 			return nil, nil, nil, err
 		}
