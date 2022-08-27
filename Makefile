@@ -9,7 +9,7 @@ NGINX_CONF:=$(APP_HOME)/nginx/nginx.conf
 NGINX_APP_CONF:=$(APP_HOME)/nginx/isuconquest.conf
 NGINX_LOG:=/var/log/nginx/access.log
 NGINX_ERR_LOG:=/var/log/nginx/error.log
-ALP_FORMAT:=/user/\d+/gacha/index,/user/\d+/gacha/draw/\d+/\d+,/user/\d+/present/index/\d+,/user/\d+/present/receive,/user/\d+/item,/user/\d+/card/addexp/\d+,/user/\d+/card,/user/\d+/reward,/user/\d+/home,/admin/user/\d+,/admin/user/\d+/ban
+ALP_FORMAT:=/user/.+/gacha/index,/user/.+/gacha/draw/.+/.+,/user/.+/present/index/.+,/user/.+/present/receive,/user/.+/item,/user/.+/card/addexp/.+,/user/.+/card,/user/.+/reward,/user/.+/home,/admin/user/.+,/admin/user/.+/ban
 
 # TODO: mysqlのコンフィグファイルの場所を指定する
 MYSQL_CONF:=$(APP_HOME)/mysql/mysqld.cnf
@@ -25,8 +25,8 @@ SERVER5_IP:=133.152.6.173
 SERVER1:=isucon@$(SERVER1_IP)
 SERVER2:=isucon@$(SERVER2_IP)
 SERVER3:=isucon@$(SERVER3_IP)
-SERVER4:=isucon@$(SERVER3_IP)
-SERVER5:=isucon@$(SERVER3_IP)
+SERVER4:=isucon@$(SERVER4_IP)
+SERVER5:=isucon@$(SERVER5_IP)
 
 SLACK_CHANNEL=isucon11-log
 SLACKCAT_RAW_CMD=slackcat -c $(SLACK_CHANNEL)
@@ -50,9 +50,9 @@ build:
 # Set app, mysql and nginx.
 build-server1: build-app build-nginx
 build-server2: stop-app build-mysql
-build-server3: stop-app
-build-server4: stop-app
-build-server5: stop-app
+build-server3: stop-app build-mysql
+build-server4: stop-app build-mysql
+build-server5: stop-app build-mysql
 
 DATE=$(shell date '+%T')
 
@@ -91,9 +91,9 @@ log:
 # Set log-nginx or log-mysql.
 log-server1: echo-branch log-app log-nginx log-nginx-diff
 log-server2: log-mysql-diff
-log-server3:
-log-server4:
-log-server5:
+log-server3: log-mysql-diff
+log-server4: log-mysql-diff
+log-server5: log-mysql-diff
 
 echo-branch:
 	git rev-parse --abbrev-ref HEAD | $(SLACKCAT_RAW_CMD) -tee --stream
@@ -101,7 +101,7 @@ echo-branch:
 log-app:
 	sudo systemctl status $(SYSTEMCTL_APP) | $(SLACKCAT_RAW_CMD)
 
-ALP_OPTIONS=--sort=sum -r -m "$(ALP_FORMAT)"
+ALP_OPTIONS=--sort=sum -r -m "$(ALP_FORMAT)" --limit=10000
 
 log-nginx:
 	sudo cat $(NGINX_LOG) | alp ltsv $(ALP_OPTIONS) | $(SLACKCAT_RAW_CMD)
