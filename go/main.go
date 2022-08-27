@@ -287,6 +287,7 @@ func (h *Handler) checkSessionMiddleware(next echo.HandlerFunc) echo.HandlerFunc
 		userSession := new(Session)
 		query := "SELECT * FROM user_sessions WHERE session_id=? AND deleted_at IS NULL"
 		if err := h.getDB(userID).Get(userSession, query, sessID); err != nil {
+			log.Printf("sessionにデータがない, %s, %d", sessID, userID)
 			if err == sql.ErrNoRows {
 				return errorResponse(c, http.StatusUnauthorized, ErrUnauthorized)
 			}

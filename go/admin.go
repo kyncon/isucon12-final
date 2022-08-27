@@ -618,7 +618,6 @@ func (h *Handler) adminBanUser(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, ErrGetRequestTime)
 	}
 
-	// TODO(@kitagry): separate per user db
 	query := "SELECT * FROM users WHERE id=?"
 	user := new(User)
 	if err = h.getDB(userID).Get(user, query, userID); err != nil {
