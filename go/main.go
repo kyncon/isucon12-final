@@ -401,9 +401,10 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 		}
 	}
 	for _, ub := range userBonuses {
+		tmpUb := ub
 		mapLoginBonusParms[ub.LoginBonusID] = LbParam{
 			initBonus: false,
-			userBonus: &ub,
+			userBonus: &tmpUb,
 		}
 	}
 
