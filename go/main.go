@@ -22,6 +22,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/pkg/errors"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -704,10 +705,21 @@ func initialize(c echo.Context) error {
 	}
 	defer dbx.Close()
 
-	out, err := exec.Command("/bin/sh", "-c", SQLDirectory+"init.sh").CombinedOutput()
-	if err != nil {
-		c.Logger().Errorf("Failed to initialize %s: %v", string(out), err)
-		return errorResponse(c, http.StatusInternalServerError, err)
+	eg, ctx := errgroup.WithContext(c.Request().Context())
+	for _, env := range []string{"ISUCON_ADMIN_DB_HOST", "ISUCON_DB_HOST"} {
+		env := env
+		eg.Go(func() error {
+			out, err := exec.Command("/bin/sh", "-c", SQLDirectory+"init.sh "+getenv(env, "127.0.0.1")).CombinedOutput()
+			if err != nil {
+				c.Logger().Errorf("Failed to initialize %s: %v", string(out), err)
+				return errorResponse(c, http.StatusInternalServerError, err)
+			}
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return err
 	}
 
 	return successResponse(c, &InitializeResponse{
