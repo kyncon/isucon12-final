@@ -7,11 +7,13 @@ import (
 	"io"
 	"log"
 	"math"
+	"math/big"
 	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -119,7 +121,7 @@ func main() {
 
 func connectDB(batch bool) (*sqlx.DB, error) {
 	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=%s&multiStatements=%t",
+		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=%s&multiStatements=%t&interpolateParams=true",
 		getEnv("ISUCON_DB_USER", "isucon"),
 		getEnv("ISUCON_DB_PASSWORD", "isucon"),
 		getEnv("ISUCON_DB_HOST", "127.0.0.1"),
@@ -362,32 +364,64 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 
 	sendLoginBonuses := make([]*UserLoginBonus, 0)
 
-	// TODO: N+1
-	for _, bonus := range loginBonuses {
-		initBonus := false
-		// ボーナスの進捗取得
-		userBonus := new(UserLoginBonus)
-		query = "SELECT * FROM user_login_bonuses WHERE user_id=? AND login_bonus_id=?"
-		if err := tx.Get(userBonus, query, userID, bonus.ID); err != nil {
-			if err != sql.ErrNoRows {
-				return nil, err
-			}
-			initBonus = true
-
-			ubID, err := h.generateID()
-			if err != nil {
-				return nil, err
-			}
-			userBonus = &UserLoginBonus{ // ボーナス初期化
+	// 準備
+	type LbParam = struct {
+		initBonus bool
+		userBonus *UserLoginBonus
+	}
+	mapLoginBonusParms := make(map[int64]LbParam, len(loginBonuses))
+	loginBonusIds := make([]int64, 0, len(loginBonuses))
+	for _, lb := range loginBonuses {
+		ubID, err := h.generateID()
+		if err != nil {
+			return nil, err
+		}
+		mapLoginBonusParms[lb.ID] = LbParam{
+			initBonus: true,
+			userBonus: &UserLoginBonus{ // ボーナス初期化
 				ID:                 ubID,
 				UserID:             userID,
-				LoginBonusID:       bonus.ID,
+				LoginBonusID:       lb.ID,
 				LastRewardSequence: 0,
 				LoopCount:          1,
 				CreatedAt:          requestAt,
 				UpdatedAt:          requestAt,
-			}
+			},
 		}
+		loginBonusIds = append(loginBonusIds, lb.ID)
+	}
+
+	// user_login_bonusesを一括取得
+	orgQuery := "SELECT * FROM user_login_bonuses WHERE user_id=? AND login_bonus_id IN (?)"
+	query, args, err := sqlx.In(orgQuery, userID, loginBonusIds)
+	if err != nil {
+		return nil, err
+	}
+	var userBonuses []UserLoginBonus
+	if err = tx.Select(&userBonuses, query, args...); err != nil {
+		if err != sql.ErrNoRows {
+			return nil, err
+		}
+	}
+	for _, ub := range userBonuses {
+		tmpUb := ub
+		mapLoginBonusParms[ub.LoginBonusID] = LbParam{
+			initBonus: false,
+			userBonus: &tmpUb,
+		}
+	}
+
+	// TODO: N+1
+	for _, bonus := range loginBonuses {
+		var lbp LbParam
+		if v, ok := mapLoginBonusParms[bonus.ID]; ok {
+			lbp = v
+		} else {
+			return nil, fmt.Errorf("no parameter error")
+		}
+		initBonus := lbp.initBonus
+		// ボーナスの進捗取得
+		userBonus := lbp.userBonus
 
 		// ボーナス進捗更新
 		if userBonus.LastRewardSequence < bonus.ColumnCount {
@@ -445,22 +479,35 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 		return nil, err
 	}
 
-	// 全員プレゼント取得情報更新
-	obtainPresents := make([]*UserPresent, 0)
-	// TODO: N+1
+	narmalPresentIDs := make([]int64, len(normalPresents))
+	for i, np := range normalPresents {
+		narmalPresentIDs[i] = np.ID
+	}
+
+	orgQuery := "SELECT * FROM `user_present_all_received_history` WHERE user_id=? AND present_all_id IN (?)"
+	query, args, err := sqlx.In(orgQuery, userID, narmalPresentIDs)
+	if err != nil {
+		return nil, err
+	}
+	var histories []UserPresentAllReceivedHistory
+	err = tx.Select(&histories, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	historyMap := make(map[int64]int64)
+	for _, history := range histories {
+		historyMap[history.PresentAllID] = history.PresentAllID
+	}
+
+	// user present boxに入れる
+	userPresents := make([]*UserPresent, 0)
+	// historyに入れる
+	receivedHistories := make([]*UserPresentAllReceivedHistory, 0)
 	for _, np := range normalPresents {
-		received := new(UserPresentAllReceivedHistory)
-		query = "SELECT * FROM user_present_all_received_history WHERE user_id=? AND present_all_id=?"
-		err := tx.Get(received, query, userID, np.ID)
-		if err == nil {
-			// プレゼント配布済
+		if _, ok := historyMap[np.ID]; ok {
+			// 受取済み
 			continue
 		}
-		if err != sql.ErrNoRows {
-			return nil, err
-		}
-
-		// user present boxに入れる
 		pID, err := h.generateID()
 		if err != nil {
 			return nil, err
@@ -476,17 +523,12 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 			CreatedAt:      requestAt,
 			UpdatedAt:      requestAt,
 		}
-		query = "INSERT INTO user_presents(id, user_id, sent_at, item_type, item_id, amount, present_message, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-		if _, err := tx.Exec(query, up.ID, up.UserID, up.SentAt, up.ItemType, up.ItemID, up.Amount, up.PresentMessage, up.CreatedAt, up.UpdatedAt); err != nil {
-			return nil, err
-		}
-
-		// historyに入れる
+		userPresents = append(userPresents, up)
 		phID, err := h.generateID()
 		if err != nil {
 			return nil, err
 		}
-		history := &UserPresentAllReceivedHistory{
+		rh := &UserPresentAllReceivedHistory{
 			ID:           phID,
 			UserID:       userID,
 			PresentAllID: np.ID,
@@ -494,23 +536,23 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 			CreatedAt:    requestAt,
 			UpdatedAt:    requestAt,
 		}
-		query = "INSERT INTO user_present_all_received_history(id, user_id, present_all_id, received_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-		if _, err := tx.Exec(
-			query,
-			history.ID,
-			history.UserID,
-			history.PresentAllID,
-			history.ReceivedAt,
-			history.CreatedAt,
-			history.UpdatedAt,
-		); err != nil {
+		receivedHistories = append(receivedHistories, rh)
+	}
+	if len(userPresents) > 0 {
+		upInsertQuery := "INSERT INTO user_presents(id, user_id, sent_at, item_type, item_id, amount, present_message, created_at, updated_at) VALUES (:id, :user_id, :sent_at, :item_type, :item_id, :amount, :present_message, :created_at, :updated_at)"
+		_, err = tx.NamedExec(upInsertQuery, userPresents)
+		if err != nil {
 			return nil, err
 		}
 
-		obtainPresents = append(obtainPresents, up)
+		historyInsertQuery := "INSERT INTO user_present_all_received_history(id, user_id, present_all_id, received_at, created_at, updated_at) VALUES (:id, :user_id, :present_all_id, :received_at, :created_at, :updated_at)"
+		_, err = tx.NamedExec(historyInsertQuery, receivedHistories)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return obtainPresents, nil
+	return userPresents, nil
 }
 
 // obtainItem アイテム付与処理
@@ -1306,21 +1348,29 @@ func (h *Handler) receivePresent(c echo.Context) error {
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	// 配布処理
-	// TODO: bulk update
+	presentIds := make([]int64, 0, len(obtainPresent))
 	for i := range obtainPresent {
 		if obtainPresent[i].DeletedAt != nil {
 			return errorResponse(c, http.StatusInternalServerError, fmt.Errorf("received present"))
 		}
+		v := obtainPresent[i]
+		presentIds = append(presentIds, v.ID)
+	}
+	orgQuery := "UPDATE user_presents SET deleted_at=?, updated_at=? WHERE id IN (?)"
+	query, params, err = sqlx.In(orgQuery, requestAt, requestAt, presentIds)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, err)
+	}
+	if _, err := tx.Exec(query, params...); err != nil {
+		return errorResponse(c, http.StatusInternalServerError, err)
+	}
 
+	// 配布処理
+	// TODO: bulk update
+	for i := range obtainPresent {
 		obtainPresent[i].UpdatedAt = requestAt
 		obtainPresent[i].DeletedAt = &requestAt
 		v := obtainPresent[i]
-		query = "UPDATE user_presents SET deleted_at=?, updated_at=? WHERE id=?"
-		_, err := tx.Exec(query, requestAt, requestAt, v.ID)
-		if err != nil {
-			return errorResponse(c, http.StatusInternalServerError, err)
-		}
 
 		_, _, _, err = h.obtainItem(tx, v.UserID, v.ItemID, v.ItemType, int64(v.Amount), requestAt)
 		if err != nil {
@@ -1957,7 +2007,10 @@ func noContentResponse(c echo.Context, status int) error {
 
 // generateID uniqueなIDを生成する
 func (h *Handler) generateID() (int64, error) {
-	return time.Now().UnixNano(), nil
+	i := new(big.Int)
+	uuidValue := uuid.New().String()
+	i.SetString(strings.Replace(uuidValue, "-", "", 4), 16)
+	return i.Int64(), nil
 }
 
 // generateSessionID
