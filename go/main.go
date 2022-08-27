@@ -1486,29 +1486,31 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, fmt.Errorf("target card is max level"))
 	}
 
-	itemIDs := make([]int64, len(req.Items))
+	userItemIDs := make([]int64, len(req.Items))
 	for i, item := range req.Items {
-		itemIDs[i] = item.ID
+		userItemIDs[i] = item.ID
 	}
 	query = `
 	SELECT ui.id, ui.user_id, ui.item_id, ui.item_type, ui.amount, ui.created_at, ui.updated_at
 	FROM user_items as ui
 	WHERE ui.item_type = 3 AND ui.id=(?) AND ui.user_id=?
 	`
-	query, args, err := sqlx.In(query, itemIDs, userID)
+	query, args, err := sqlx.In(query, userItemIDs, userID)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
-	consumeUserItemData := make([]ConsumeUserItemData, 0, len(itemIDs))
+	consumeUserItemData := make([]ConsumeUserItemData, 0, len(userItemIDs))
 	err = h.DB.Select(&consumeUserItemData, query, args...)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
 	itemIDToData := make(map[int64]ConsumeUserItemData, len(consumeUserItemData))
-	for _, c := range consumeUserItemData {
+	itemIDs := make([]int64, len(consumeUserItemData))
+	for i, c := range consumeUserItemData {
 		itemIDToData[c.ItemID] = c
+		itemIDs[i] = c.ItemID
 	}
 
 	query = `SELECT id, gained_exp FROM item_masters WHERE id IN (?)`
