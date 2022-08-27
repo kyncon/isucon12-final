@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"math/rand"
 	"net/http"
 	"os"
@@ -1955,12 +1956,10 @@ func noContentResponse(c echo.Context, status int) error {
 
 // generateID uniqueなIDを生成する
 func (h *Handler) generateID() (int64, error) {
+	i := new(big.Int)
 	uuidValue := uuid.New().String()
-	id, err := strconv.ParseInt(strings.Replace(uuidValue, "-", "", 4), 16, 64)
-	if err != nil {
-		return 0, err
-	}
-	return id, nil
+	i.SetString(strings.Replace(uuidValue, "-", "", 4), 16)
+	return i.Int64(), nil
 }
 
 // generateSessionID
