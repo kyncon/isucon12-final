@@ -1358,7 +1358,7 @@ func (h *Handler) receivePresent(c echo.Context) error {
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
-	if _, err := tx.NamedExec(query, params); err != nil {
+	if _, err := tx.Exec(query, params...); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
