@@ -76,3 +76,4 @@ log-queries-not-using-indexes
 max_binlog_size   = 100M
 # binlog_do_db		= include_database_name
 # binlog_ignore_db	= include_database_name
+local_infile = 1
