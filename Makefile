@@ -82,10 +82,10 @@ build-mysql:
 .PHONY: log log-server1 log-server2 log-server3 log-nginx log-nginx-diff log-mysql log-app echo-branch
 log:
 	$(SSH_COMMAND) $(SERVER1) 'cd $(APP_HOME) && source ~/.profile && git fetch -p && git checkout $(BRANCH) && git pull origin $(BRANCH) && make log-server1'
+	$(SSH_COMMAND) $(SERVER5) 'cd $(APP_HOME) && source ~/.profile && git fetch -p && git checkout $(BRANCH) && git pull origin $(BRANCH) && make log-server5'
 	$(SSH_COMMAND) $(SERVER2) 'cd $(APP_HOME) && source ~/.profile && git fetch -p && git checkout $(BRANCH) && git pull origin $(BRANCH) && make log-server2'
 	$(SSH_COMMAND) $(SERVER3) 'cd $(APP_HOME) && source ~/.profile && git fetch -p && git checkout $(BRANCH) && git pull origin $(BRANCH) && make log-server3'
 	$(SSH_COMMAND) $(SERVER4) 'cd $(APP_HOME) && source ~/.profile && git fetch -p && git checkout $(BRANCH) && git pull origin $(BRANCH) && make log-server4'
-	$(SSH_COMMAND) $(SERVER5) 'cd $(APP_HOME) && source ~/.profile && git fetch -p && git checkout $(BRANCH) && git pull origin $(BRANCH) && make log-server5'
 
 # Send log to slack
 # Set log-nginx or log-mysql.
