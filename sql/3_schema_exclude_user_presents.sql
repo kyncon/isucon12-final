@@ -259,3 +259,4 @@ CREATE TABLE `admin_users` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 ALTER TABLE `user_present_all_received_history` ADD INDEX idx_user_id_present_all_id(user_id, present_all_id);
+ALTER TABLE `version_masters` ADD INDEX idx_version_user_id(user_id);
