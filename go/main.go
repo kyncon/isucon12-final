@@ -1488,21 +1488,60 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 
 	// 消費アイテムの所持チェック
 	items := make([]*ConsumeUserItemData, 0)
+
+	itemIDs := make([]int64, len(req.Items))
+	for i, item := range req.Items {
+		itemIDs[i] = item.ID
+	}
 	query = `
-	SELECT ui.id, ui.user_id, ui.item_id, ui.item_type, ui.amount, ui.created_at, ui.updated_at, im.gained_exp
+	SELECT ui.id, ui.user_id, ui.item_id, ui.item_type, ui.amount, ui.created_at, ui.updated_at
 	FROM user_items as ui
-	INNER JOIN item_masters as im ON ui.item_id = im.id
-	WHERE ui.item_type = 3 AND ui.id=? AND ui.user_id=?
+	WHERE ui.item_type = 3 AND ui.id=(?) AND ui.user_id=?
 	`
-	// TODO: N+1
+	query, args, err := sqlx.In(query, itemIDs, userID)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, err)
+	}
+
+	consumeUserItemData := make([]ConsumeUserItemData, 0, len(itemIDs))
+	err = h.DB.Select(&consumeUserItemData, query, args...)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, err)
+	}
+
+	itemIDToData := make(map[int64]ConsumeUserItemData, len(consumeUserItemData))
+	for _, c := range consumeUserItemData {
+		itemIDToData[c.ID] = c
+	}
+
+	query = `SELECT id, gained_exp FROM item_masters WHERE id IN (?)`
+	query, args, err = sqlx.In(query, itemIDs)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, err)
+	}
+
+	var gainExps []struct {
+		ID        int64 `db:"id"`
+		GainedExp int   `db:"gained_exp"`
+	}
+	err = h.DB.Select(&gainExps, query, args...)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, err)
+	}
+
+	for _, g := range gainExps {
+		data := itemIDToData[g.ID]
+		data.GainedExp = g.GainedExp
+		itemIDToData[g.ID] = data
+	}
+
 	for _, v := range req.Items {
 		item := new(ConsumeUserItemData)
-		if err = h.DB.Get(item, query, v.ID, userID); err != nil {
-			if err == sql.ErrNoRows {
-				return errorResponse(c, http.StatusNotFound, err)
-			}
-			return errorResponse(c, http.StatusInternalServerError, err)
+		d, ok := itemIDToData[v.ID]
+		if !ok {
+			return errorResponse(c, http.StatusNotFound, err)
 		}
+		item = &d
 
 		if v.Amount > item.Amount {
 			return errorResponse(c, http.StatusBadRequest, fmt.Errorf("item not enough"))

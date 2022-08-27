@@ -183,13 +183,11 @@ func (h *Handler) adminListMaster(c echo.Context) error {
 	presentAlls := make([]*PresentAllMaster, 0)
 	if err := h.DB.Select(&presentAlls, "SELECT * FROM present_all_masters"); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
-
 	}
 
 	loginBonuses := make([]*LoginBonusMaster, 0)
 	if err := h.DB.Select(&loginBonuses, "SELECT * FROM login_bonus_masters"); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
-
 	}
 
 	loginBonusRewards := make([]*LoginBonusRewardMaster, 0)
