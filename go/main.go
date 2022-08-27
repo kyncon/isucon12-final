@@ -69,7 +69,6 @@ func abs(s int64) int64 {
 }
 
 func main() {
-	initProfiler()
 	rand.Seed(time.Now().UnixNano())
 	time.Local = time.FixedZone("Local", 9*60*60)
 
