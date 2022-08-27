@@ -42,6 +42,8 @@ var (
 	ErrGeneratePassword         error = fmt.Errorf("failed to password hash") //nolint:deadcode
 
 	DBNUM = 3
+
+	versionMasterCache = newMutexVersionMaster()
 )
 
 const (
@@ -233,13 +235,10 @@ func (h *Handler) apiMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		c.Set("requestTime", requestAt.Unix())
 
 		// マスタ確認
-		query := "SELECT * FROM version_masters WHERE status=1"
-		masterVersion := new(VersionMaster)
-		if err := h.adminDB.Get(masterVersion, query); err != nil {
-			if err == sql.ErrNoRows {
-				return errorResponse(c, http.StatusNotFound, fmt.Errorf("active master version is not found"))
-			}
-			return errorResponse(c, http.StatusInternalServerError, err)
+		// query := "SELECT * FROM version_masters WHERE status=1"
+		masterVersion := versionMasterCache.Get()
+		if masterVersion.MasterVersion == "" {
+			return errorResponse(c, http.StatusNotFound, fmt.Errorf("active master version is not found"))
 		}
 
 		if masterVersion.MasterVersion != c.Request().Header.Get("x-master-version") {
