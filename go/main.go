@@ -1600,35 +1600,11 @@ func (h *Handler) receivePresent(c echo.Context) error {
 	}
 
 	// 配布処理
-	// TODO: bulk update
-	for i := range obtainPresent {
-		obtainPresent[i].UpdatedAt = requestAt
-		obtainPresent[i].DeletedAt = &requestAt
-		v := obtainPresent[i]
-
-		if v.ItemType == 1 || v.ItemType == 2 {
-			continue
-		}
-
-		_, _, _, err = h.obtainItem(tx, v.UserID, v.ItemID, v.ItemType, int64(v.Amount), requestAt)
-		if err != nil {
-			if err == ErrUserNotFound || err == ErrItemNotFound {
-				return errorResponse(c, http.StatusNotFound, err)
-			}
-			if err == ErrInvalidItemType {
-				return errorResponse(c, http.StatusBadRequest, err)
-			}
-			return errorResponse(c, http.StatusInternalServerError, err)
-		}
-	}
-
 	// itemTypeごとに実行
 	for k, v := range mapObtainPresents {
-		if k == 1 || k == 2 {
-			_, _, _, err = h.bulkObtainItems(tx, k, v)
-			if err != nil {
-				return errorResponse(c, http.StatusInternalServerError, err)
-			}
+		_, _, _, err = h.bulkObtainItems(tx, k, v)
+		if err != nil {
+			return errorResponse(c, http.StatusInternalServerError, err)
 		}
 	}
 
