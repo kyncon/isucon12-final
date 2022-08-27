@@ -101,7 +101,7 @@ echo-branch:
 log-app:
 	sudo systemctl status $(SYSTEMCTL_APP) | $(SLACKCAT_RAW_CMD)
 
-ALP_OPTIONS=--sort=sum -r -m "$(ALP_FORMAT)"
+ALP_OPTIONS=--sort=sum -r -m "$(ALP_FORMAT)" --limit=10000
 
 log-nginx:
 	sudo cat $(NGINX_LOG) | alp ltsv $(ALP_OPTIONS) | $(SLACKCAT_RAW_CMD)
