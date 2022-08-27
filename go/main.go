@@ -325,7 +325,7 @@ func (h *Handler) checkSessionMiddleware(next echo.HandlerFunc) echo.HandlerFunc
 
 		sID, err := strconv.ParseInt(sessID, 10, 64)
 		if err != nil {
-			return errorResponse(c, http.StatusUnauthorized, err)
+			return errorResponse(c, http.StatusUnauthorized, ErrUnauthorized)
 		}
 
 		var userSession Session
