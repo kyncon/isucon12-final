@@ -1508,7 +1508,7 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 
 	itemIDToData := make(map[int64]ConsumeUserItemData, len(consumeUserItemData))
 	for _, c := range consumeUserItemData {
-		itemIDToData[c.ID] = c
+		itemIDToData[c.ItemID] = c
 	}
 
 	query = `SELECT id, gained_exp FROM item_masters WHERE id IN (?)`
