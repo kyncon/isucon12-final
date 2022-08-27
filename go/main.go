@@ -119,7 +119,7 @@ func main() {
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{}))
 
 	// utility
-	e.POST("/initialize", initialize)
+	e.POST("/initialize", h.initialize)
 	e.GET("/health", h.health)
 
 	// feature
@@ -949,7 +949,7 @@ func (h *Handler) bulkObtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemPa
 
 // initialize 初期化処理
 // POST /initialize
-func initialize(c echo.Context) error {
+func (h *handler) initialize(c echo.Context) error {
 	dbx, err := connectDB(true)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
@@ -1328,7 +1328,7 @@ func (h *Handler) listGacha(c echo.Context) error {
 	// ガチャ排出アイテム取得
 	gachaDataList := make([]*GachaData, 0)
 	for _, v := range gachaMasterList {
-		gachaItem, _ := gachaItemMasterCache.Get(strconv.Itoa(v.ID))
+		gachaItem, _ := gachaItemMasterCache.Get(strconv.Itoa(int(v.ID)))
 
 		if len(gachaItem) == 0 {
 			return errorResponse(c, http.StatusNotFound, fmt.Errorf("not found gacha item"))
