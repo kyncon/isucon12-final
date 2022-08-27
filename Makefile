@@ -25,8 +25,8 @@ SERVER5_IP:=133.152.6.173
 SERVER1:=isucon@$(SERVER1_IP)
 SERVER2:=isucon@$(SERVER2_IP)
 SERVER3:=isucon@$(SERVER3_IP)
-SERVER4:=isucon@$(SERVER3_IP)
-SERVER5:=isucon@$(SERVER3_IP)
+SERVER4:=isucon@$(SERVER4_IP)
+SERVER5:=isucon@$(SERVER5_IP)
 
 SLACK_CHANNEL=isucon11-log
 SLACKCAT_RAW_CMD=slackcat -c $(SLACK_CHANNEL)
@@ -52,7 +52,7 @@ build-server1: build-app build-nginx
 build-server2: stop-app build-mysql
 build-server3: stop-app
 build-server4: stop-app
-build-server5: stop-app
+build-server5: stop-app build-mysql
 
 DATE=$(shell date '+%T')
 
@@ -93,7 +93,7 @@ log-server1: echo-branch log-app log-nginx log-nginx-diff
 log-server2: log-mysql-diff
 log-server3:
 log-server4:
-log-server5:
+log-server5: log-mysql-diff
 
 echo-branch:
 	git rev-parse --abbrev-ref HEAD | $(SLACKCAT_RAW_CMD) -tee --stream
