@@ -357,6 +357,7 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 
 	sendLoginBonuses := make([]*UserLoginBonus, 0)
 
+	// TODO: N+1
 	for _, bonus := range loginBonuses {
 		initBonus := false
 		// ボーナスの進捗取得
@@ -441,6 +442,7 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 
 	// 全員プレゼント取得情報更新
 	obtainPresents := make([]*UserPresent, 0)
+	// TODO: N+1
 	for _, np := range normalPresents {
 		received := new(UserPresentAllReceivedHistory)
 		query = "SELECT * FROM user_present_all_received_history WHERE user_id=? AND present_all_id=?"
@@ -713,6 +715,7 @@ func (h *Handler) createUser(c echo.Context) error {
 	}
 
 	initCards := make([]*UserCard, 0, 3)
+	// TODO: bulk insert
 	for i := 0; i < 3; i++ {
 		cID, err := h.generateID()
 		if err != nil {
@@ -972,6 +975,7 @@ func (h *Handler) listGacha(c echo.Context) error {
 	// ガチャ排出アイテム取得
 	gachaDataList := make([]*GachaData, 0)
 	query = "SELECT * FROM gacha_item_masters WHERE gacha_id=? ORDER BY id ASC"
+	// TODO: N+1
 	for _, v := range gachaMasterList {
 		var gachaItem []*GachaItemMaster
 		err = h.DB.Select(&gachaItem, query, v.ID)
@@ -1145,6 +1149,7 @@ func (h *Handler) drawGacha(c echo.Context) error {
 
 	// 直付与 => プレゼントに入れる
 	presents := make([]*UserPresent, 0, gachaCount)
+	// TODO: bulk insert
 	for _, v := range result {
 		pID, err := h.generateID()
 		if err != nil {
@@ -1298,6 +1303,7 @@ func (h *Handler) receivePresent(c echo.Context) error {
 	defer tx.Rollback() //nolint:errcheck
 
 	// 配布処理
+	// TODO: bulk update
 	for i := range obtainPresent {
 		if obtainPresent[i].DeletedAt != nil {
 			return errorResponse(c, http.StatusInternalServerError, fmt.Errorf("received present"))
@@ -1485,6 +1491,7 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 	INNER JOIN item_masters as im ON ui.item_id = im.id
 	WHERE ui.item_type = 3 AND ui.id=? AND ui.user_id=?
 	`
+	// TODO: N+1
 	for _, v := range req.Items {
 		item := new(ConsumeUserItemData)
 		if err = h.DB.Get(item, query, v.ID, userID); err != nil {
@@ -1533,6 +1540,7 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 	}
 
 	query = "UPDATE user_items SET amount=?, updated_at=? WHERE id=?"
+	// TODO: N+1
 	for _, v := range items {
 		if _, err = tx.Exec(query, v.Amount-v.ConsumeAmount, requestAt, v.ID); err != nil {
 			return errorResponse(c, http.StatusInternalServerError, err)
@@ -1896,6 +1904,7 @@ func noContentResponse(c echo.Context, status int) error {
 // generateID uniqueなIDを生成する
 func (h *Handler) generateID() (int64, error) {
 	var updateErr error
+	// TODO: N+1
 	for i := 0; i < 100; i++ {
 		res, err := h.DB.Exec("UPDATE id_generator SET id=LAST_INSERT_ID(id+1)")
 		if err != nil {
