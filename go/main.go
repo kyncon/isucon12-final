@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -1954,7 +1955,12 @@ func noContentResponse(c echo.Context, status int) error {
 
 // generateID uniqueなIDを生成する
 func (h *Handler) generateID() (int64, error) {
-	return time.Now().UnixNano(), nil
+	uuidValue := uuid.New().String()
+	id, err := strconv.ParseInt(strings.Replace(uuidValue, "-", "", 4), 16, 64)
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 // generateSessionID
