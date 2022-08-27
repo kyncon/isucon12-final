@@ -55,7 +55,7 @@ func main() {
 	time.Local = time.FixedZone("Local", 9*60*60)
 
 	e := echo.New()
-	e.Use(middleware.Logger())
+	// e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"*"},
@@ -361,32 +361,64 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 
 	sendLoginBonuses := make([]*UserLoginBonus, 0)
 
-	// TODO: N+1
-	for _, bonus := range loginBonuses {
-		initBonus := false
-		// ボーナスの進捗取得
-		userBonus := new(UserLoginBonus)
-		query = "SELECT * FROM user_login_bonuses WHERE user_id=? AND login_bonus_id=?"
-		if err := tx.Get(userBonus, query, userID, bonus.ID); err != nil {
-			if err != sql.ErrNoRows {
-				return nil, err
-			}
-			initBonus = true
-
-			ubID, err := h.generateID()
-			if err != nil {
-				return nil, err
-			}
-			userBonus = &UserLoginBonus{ // ボーナス初期化
+	// 準備
+	type LbParam = struct {
+		initBonus bool
+		userBonus *UserLoginBonus
+	}
+	mapLoginBonusParms := make(map[int64]LbParam, len(loginBonuses))
+	loginBonusIds := make([]int64, 0, len(loginBonuses))
+	for _, lb := range loginBonuses {
+		ubID, err := h.generateID()
+		if err != nil {
+			return nil, err
+		}
+		mapLoginBonusParms[lb.ID] = LbParam{
+			initBonus: true,
+			userBonus: &UserLoginBonus{ // ボーナス初期化
 				ID:                 ubID,
 				UserID:             userID,
-				LoginBonusID:       bonus.ID,
+				LoginBonusID:       lb.ID,
 				LastRewardSequence: 0,
 				LoopCount:          1,
 				CreatedAt:          requestAt,
 				UpdatedAt:          requestAt,
-			}
+			},
 		}
+		loginBonusIds = append(loginBonusIds, lb.ID)
+	}
+
+	// user_login_bonusesを一括取得
+	orgQuery := "SELECT * FROM user_login_bonuses WHERE user_id=? AND login_bonus_id IN (?)"
+	query, args, err := sqlx.In(orgQuery, userID, loginBonusIds)
+	if err != nil {
+		return nil, err
+	}
+	var userBonuses []UserLoginBonus
+	if err = tx.Select(&userBonuses, query, args...); err != nil {
+		if err != sql.ErrNoRows {
+			return nil, err
+		}
+	}
+	for _, ub := range userBonuses {
+		tmpUb := ub
+		mapLoginBonusParms[ub.LoginBonusID] = LbParam{
+			initBonus: false,
+			userBonus: &tmpUb,
+		}
+	}
+
+	// TODO: N+1
+	for _, bonus := range loginBonuses {
+		var lbp LbParam
+		if v, ok := mapLoginBonusParms[bonus.ID]; ok {
+			lbp = v
+		} else {
+			return nil, fmt.Errorf("no parameter error")
+		}
+		initBonus := lbp.initBonus
+		// ボーナスの進捗取得
+		userBonus := lbp.userBonus
 
 		// ボーナス進捗更新
 		if userBonus.LastRewardSequence < bonus.ColumnCount {
