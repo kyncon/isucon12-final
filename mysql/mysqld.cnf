@@ -81,6 +81,6 @@ local_infile = 1
 innodb_flush_method = O_DIRECT
 innodb_flush_log_at_trx_commit = 0
 innodb_buffer_pool_size        = 3G # 物理メモリの８０%程度
-max_connections = 20000
+max_connections = 200000
 disable-log-bin = 1
 sync_binlog = 1000
