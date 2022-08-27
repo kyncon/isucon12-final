@@ -486,6 +486,30 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 		}
 	}
 
+	// rewardのmaster取得
+	orgQuery = "SELECT * FROM login_bonus_reward_masters WHERE login_bonus_id IN (?)"
+	query, args, err = sqlx.In(orgQuery, loginBonusIds)
+	if err != nil {
+		return nil, err
+	}
+	var rewardItems []LoginBonusRewardMaster
+	if err = h.adminDB.Select(&rewardItems, query, args...); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrLoginBonusRewardNotFound
+		}
+		return nil, err
+	}
+	lbidToRewardItems := make(map[int64][]LoginBonusRewardMaster, len(loginBonusIds))
+	for _, ri := range rewardItems {
+		if ris, ok := lbidToRewardItems[ri.LoginBonusID]; ok {
+			newris := ris
+			newris = append(newris, ri)
+			lbidToRewardItems[ri.LoginBonusID] = newris
+		} else {
+			lbidToRewardItems[ri.LoginBonusID] = []LoginBonusRewardMaster{ri}
+		}
+	}
+
 	// TODO: N+1
 	for _, bonus := range loginBonuses {
 		var lbp LbParam
@@ -513,13 +537,15 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 		userBonus.UpdatedAt = requestAt
 
 		// 今回付与するリソース取得
-		rewardItem := new(LoginBonusRewardMaster)
-		query = "SELECT * FROM login_bonus_reward_masters WHERE login_bonus_id=? AND reward_sequence=?"
-		if err := h.adminDB.Get(rewardItem, query, bonus.ID, userBonus.LastRewardSequence); err != nil {
-			if err == sql.ErrNoRows {
-				return nil, ErrLoginBonusRewardNotFound
+		var rewardItem LoginBonusRewardMaster
+		if ris, ok := lbidToRewardItems[bonus.ID]; ok {
+			for _, ri := range ris {
+				if ri.RewardSequence == userBonus.LastRewardSequence {
+					rewardItem = ri
+				}
 			}
-			return nil, err
+		} else {
+			return nil, ErrLoginBonusRewardNotFound
 		}
 
 		_, _, _, err := h.obtainItem(tx, userID, rewardItem.ItemID, rewardItem.ItemType, rewardItem.Amount, requestAt)
