@@ -709,7 +709,8 @@ func initialize(c echo.Context) error {
 	for _, env := range []string{"ISUCON_ADMIN_DB_HOST", "ISUCON_DB_HOST"} {
 		env := env
 		eg.Go(func() error {
-			out, err := exec.Command("/bin/sh", "-c", SQLDirectory+"init.sh "+getenv(env, "127.0.0.1")).CombinedOutput()
+			cmd := exec.CommandContext(ctx, "/bin/sh", "-c", SQLDirectory+"init.sh "+getEnv(env, "127.0.0.1"))
+			out, err := cmd.CombinedOutput()
 			if err != nil {
 				c.Logger().Errorf("Failed to initialize %s: %v", string(out), err)
 				return errorResponse(c, http.StatusInternalServerError, err)
