@@ -686,13 +686,18 @@ func (h *Handler) bulkObtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemPa
 	// junbi
 	userIds := make([]int64, 0, len(itemParams))
 	userTotalCoin := make(map[int64]int64, len(itemParams))
+	itemIds := make([]int64, 0, len(itemParams))
 	for _, ip := range itemParams {
+		// coin
 		if _, ok := userTotalCoin[ip.userID]; ok {
 			userTotalCoin[ip.userID] += ip.obtainAmount
 		} else {
 			userTotalCoin[ip.userID] = 0
 			userIds = append(userIds, ip.userID)
 		}
+
+		// card(ハンマー)
+		itemIds = append(itemIds, ip.itemID)
 	}
 
 	switch itemType {
@@ -727,34 +732,55 @@ func (h *Handler) bulkObtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemPa
 		}
 
 	case 2: // card(ハンマー)
-		query := "SELECT * FROM item_masters WHERE id=? AND item_type=?"
-		item := new(ItemMaster)
-		if err := tx.Get(item, query, itemID, itemType); err != nil {
+		orgQuery := "SELECT * FROM item_masters WHERE item_type=? AND id IN (?)"
+		query, params, err := sqlx.In(orgQuery, 2, itemIds)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		var items []ItemMaster
+		if err = tx.Select(&items, query, params...); err != nil {
 			if err == sql.ErrNoRows {
 				return nil, nil, nil, ErrItemNotFound
 			}
 			return nil, nil, nil, err
 		}
 
-		cID, err := h.generateID()
-		if err != nil {
+		idToItem := make(map[int64]ItemMaster, len(items))
+		for _, i := range items {
+			if _, ok := idToItem[i.ID]; !ok {
+				idToItem[i.ID] = i
+			}
+		}
+
+		insertCards := make([]UserCard, 0, len(itemParams))
+		for _, ip := range itemParams {
+			cID, err := h.generateID()
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			if item, ok := idToItem[ip.itemID]; ok {
+				card := UserCard{
+					ID:           cID,
+					UserID:       ip.userID,
+					CardID:       ip.itemID,
+					AmountPerSec: *item.AmountPerSec,
+					Level:        1,
+					TotalExp:     0,
+					CreatedAt:    requestAt,
+					UpdatedAt:    requestAt,
+				}
+				insertCards = append(insertCards, card)
+				// 使っていない
+				obtainCards = append(obtainCards, &card)
+			} else {
+				return nil, nil, nil, err
+			}
+		}
+
+		query = "INSERT INTO user_cards(id, user_id, card_id, amount_per_sec, level, total_exp, created_at, updated_at) VALUES (:id, :user_id, :card_id, :amount_per_sec, :level, :total_exp, :created_at, :updated_at)"
+		if _, err := tx.NamedExec(query, insertCards); err != nil {
 			return nil, nil, nil, err
 		}
-		card := &UserCard{
-			ID:           cID,
-			UserID:       userID,
-			CardID:       item.ID,
-			AmountPerSec: *item.AmountPerSec,
-			Level:        1,
-			TotalExp:     0,
-			CreatedAt:    requestAt,
-			UpdatedAt:    requestAt,
-		}
-		query = "INSERT INTO user_cards(id, user_id, card_id, amount_per_sec, level, total_exp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-		if _, err := tx.Exec(query, card.ID, card.UserID, card.CardID, card.AmountPerSec, card.Level, card.TotalExp, card.CreatedAt, card.UpdatedAt); err != nil {
-			return nil, nil, nil, err
-		}
-		obtainCards = append(obtainCards, card)
 
 	case 3, 4: // 強化素材
 		query := "SELECT * FROM item_masters WHERE id=? AND item_type=?"
@@ -1546,7 +1572,7 @@ func (h *Handler) receivePresent(c echo.Context) error {
 		obtainPresent[i].DeletedAt = &requestAt
 		v := obtainPresent[i]
 
-		if v.ItemType == 1 {
+		if v.ItemType == 1 || v.ItemType == 2 {
 			continue
 		}
 
@@ -1564,7 +1590,7 @@ func (h *Handler) receivePresent(c echo.Context) error {
 
 	// itemTypeごとに実行
 	for k, v := range mapObtainPresents {
-		if k == 1 {
+		if k == 1 || k == 2 {
 			_, _, _, err = h.bulkObtainItems(tx, k, v)
 			if err != nil {
 				return errorResponse(c, http.StatusInternalServerError, err)
