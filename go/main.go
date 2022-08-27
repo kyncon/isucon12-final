@@ -71,7 +71,6 @@ func abs(s int64) int64 {
 }
 
 func main() {
-	initProfiler()
 	rand.Seed(time.Now().UnixNano())
 	time.Local = time.FixedZone("Local", 9*60*60)
 
@@ -121,7 +120,7 @@ func main() {
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{}))
 
 	// utility
-	e.POST("/initialize", initialize)
+	e.POST("/initialize", h.initialize)
 	e.GET("/health", h.health)
 
 	// feature
@@ -998,7 +997,7 @@ func (h *Handler) bulkObtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemPa
 
 // initialize 初期化処理
 // POST /initialize
-func initialize(c echo.Context) error {
+func (h *Handler) initialize(c echo.Context) error {
 	dbx, err := connectDB(true)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
@@ -1027,6 +1026,13 @@ func initialize(c echo.Context) error {
 	if err := eg.Wait(); err != nil {
 		return err
 	}
+
+	gachaItemMaster := make([]*GachaItemMaster, 0, 1000)
+	err = h.adminDB.Select(&gachaItemMaster, "SELECT * FROM gacha_item_masters ORDER BY id")
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, err)
+	}
+	gachaItemMasterCache.Initialize(gachaItemMaster)
 
 	return successResponse(c, &InitializeResponse{
 		Language: "go",
@@ -1369,14 +1375,8 @@ func (h *Handler) listGacha(c echo.Context) error {
 
 	// ガチャ排出アイテム取得
 	gachaDataList := make([]*GachaData, 0)
-	query = "SELECT * FROM gacha_item_masters WHERE gacha_id=? ORDER BY id ASC"
-	// TODO: N+1
 	for _, v := range gachaMasterList {
-		var gachaItem []*GachaItemMaster
-		err = h.adminDB.Select(&gachaItem, query, v.ID)
-		if err != nil {
-			return errorResponse(c, http.StatusInternalServerError, err)
-		}
+		gachaItem, _ := gachaItemMasterCache.Get(strconv.Itoa(int(v.ID)))
 
 		if len(gachaItem) == 0 {
 			return errorResponse(c, http.StatusNotFound, fmt.Errorf("not found gacha item"))
@@ -1503,11 +1503,7 @@ func (h *Handler) drawGacha(c echo.Context) error {
 	}
 
 	// gachaItemMasterからアイテムリスト取得
-	gachaItemList := make([]*GachaItemMaster, 0)
-	err = h.adminDB.Select(&gachaItemList, "SELECT * FROM gacha_item_masters WHERE gacha_id=? ORDER BY id ASC", gachaID)
-	if err != nil {
-		return errorResponse(c, http.StatusInternalServerError, err)
-	}
+	gachaItemList, _ := gachaItemMasterCache.Get(gachaID)
 	if len(gachaItemList) == 0 {
 		return errorResponse(c, http.StatusNotFound, fmt.Errorf("not found gacha item"))
 	}

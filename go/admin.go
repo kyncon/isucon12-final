@@ -375,6 +375,13 @@ func (h *Handler) adminUpdateMaster(c echo.Context) error {
 		c.Logger().Debug("Skip Update Master: gachaItemMaster")
 	}
 
+	gachaItemMaster := make([]*GachaItemMaster, 0, 1000)
+	err = tx.Select(&gachaItemMaster, "SELECT * FROM gacha_item_masters ORDER BY id")
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, err)
+	}
+	gachaItemMasterCache.Initialize(gachaItemMaster)
+
 	// present all
 	presentAllRecs, err := readFormFileToCSV(c, "presentAllMaster")
 	if err != nil {
