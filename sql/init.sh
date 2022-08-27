@@ -31,7 +31,7 @@ SECURE_DIR=${DIR:-/var/lib/mysql-files/}
 
 sudo cp 5_user_presents_not_receive_data.tsv ${SECURE_DIR}
 
-echo "LOAD DATA LOCAL INFILE '${SECURE_DIR}5_user_presents_not_receive_data.tsv' REPLACE INTO TABLE user_presents FIELDS ESCAPED BY '|' IGNORE 1 LINES ;" | mysql -u"$ISUCON_DB_USER" \
+echo "LOAD DATA LOCAL INFILE '${SECURE_DIR}5_user_presents_not_receive_data.tsv' REPLACE INTO TABLE user_presents FIELDS ESCAPED BY '|' IGNORE 1 LINES ;" | sudo mysql -u"$ISUCON_DB_USER" \
         -p"$ISUCON_DB_PASSWORD" \
         --host "$ISUCON_DB_HOST" \
         --port "$ISUCON_DB_PORT" \
