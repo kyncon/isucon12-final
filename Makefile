@@ -52,7 +52,7 @@ build-server1: build-app build-nginx
 build-server2: stop-app build-mysql
 build-server3: stop-app
 build-server4: stop-app
-build-server5: stop-app
+build-server5: stop-app build-mysql
 
 DATE=$(shell date '+%T')
 
@@ -93,7 +93,7 @@ log-server1: echo-branch log-app log-nginx log-nginx-diff
 log-server2: log-mysql-diff
 log-server3:
 log-server4:
-log-server5:
+log-server5: log-mysql-diff
 
 echo-branch:
 	git rev-parse --abbrev-ref HEAD | $(SLACKCAT_RAW_CMD) -tee --stream
