@@ -235,10 +235,18 @@ func (h *Handler) apiMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		c.Set("requestTime", requestAt.Unix())
 
 		// マスタ確認
-		// query := "SELECT * FROM version_masters WHERE status=1"
 		masterVersion := versionMasterCache.Get()
-		if masterVersion.MasterVersion == "" {
-			return errorResponse(c, http.StatusNotFound, fmt.Errorf("active master version is not found"))
+		if masterVersion.Status != 1 {
+			query := "SELECT * FROM version_masters WHERE status=1"
+			pmv := new(VersionMaster)
+			if err := h.adminDB.Get(pmv, query); err != nil {
+				if err == sql.ErrNoRows {
+					return errorResponse(c, http.StatusNotFound, fmt.Errorf("active master version is not found"))
+				}
+				return errorResponse(c, http.StatusInternalServerError, err)
+			}
+			versionMasterCache.Set(*pmv)
+			masterVersion = versionMasterCache.Get()
 		}
 
 		if masterVersion.MasterVersion != c.Request().Header.Get("x-master-version") {
