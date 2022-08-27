@@ -41,7 +41,7 @@ var (
 	ErrForbidden                error = fmt.Errorf("forbidden")
 	ErrGeneratePassword         error = fmt.Errorf("failed to password hash") //nolint:deadcode
 
-	DBNUM = 3
+	DBNUM = 4
 )
 
 const (
