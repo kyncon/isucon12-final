@@ -1540,7 +1540,7 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 		item := new(ConsumeUserItemData)
 		d, ok := itemIDToData[v.ID]
 		if !ok {
-			return errorResponse(c, http.StatusNotFound, err)
+			return errorResponse(c, http.StatusNotFound, fmt.Errorf("not found"))
 		}
 		item = &d
 
