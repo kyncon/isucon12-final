@@ -534,7 +534,32 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 		}
 	}
 
-	// TODO: N+1
+	// rewardのmaster取得
+	orgQuery = "SELECT * FROM login_bonus_reward_masters WHERE login_bonus_id IN (?)"
+	query, args, err = sqlx.In(orgQuery, loginBonusIds)
+	if err != nil {
+		return nil, err
+	}
+	var rewardItems []LoginBonusRewardMaster
+	if err = h.adminDB.Select(&rewardItems, query, args...); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrLoginBonusRewardNotFound
+		}
+		return nil, err
+	}
+	lbidToRewardItems := make(map[int64][]LoginBonusRewardMaster, len(loginBonusIds))
+	for _, ri := range rewardItems {
+		if ris, ok := lbidToRewardItems[ri.LoginBonusID]; ok {
+			newris := ris
+			newris = append(newris, ri)
+			lbidToRewardItems[ri.LoginBonusID] = newris
+		} else {
+			lbidToRewardItems[ri.LoginBonusID] = []LoginBonusRewardMaster{ri}
+		}
+	}
+
+	// itemTypeごとにまとめる
+	mapObtainItems := make(map[int][]ItemParam, 4)
 	for _, bonus := range loginBonuses {
 		var lbp LbParam
 		if v, ok := mapLoginBonusParms[bonus.ID]; ok {
@@ -542,7 +567,6 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 		} else {
 			return nil, fmt.Errorf("no parameter error")
 		}
-		initBonus := lbp.initBonus
 		// ボーナスの進捗取得
 		userBonus := lbp.userBonus
 
@@ -561,34 +585,52 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 		userBonus.UpdatedAt = requestAt
 
 		// 今回付与するリソース取得
-		rewardItem := new(LoginBonusRewardMaster)
-		query = "SELECT * FROM login_bonus_reward_masters WHERE login_bonus_id=? AND reward_sequence=?"
-		if err := h.adminDB.Get(rewardItem, query, bonus.ID, userBonus.LastRewardSequence); err != nil {
-			if err == sql.ErrNoRows {
-				return nil, ErrLoginBonusRewardNotFound
-			}
-			return nil, err
-		}
-
-		_, _, _, err := h.obtainItem(tx, userID, rewardItem.ItemID, rewardItem.ItemType, rewardItem.Amount, requestAt)
-		if err != nil {
-			return nil, err
-		}
-
-		// 進捗の保存
-		if initBonus {
-			query = "INSERT INTO user_login_bonuses(id, user_id, login_bonus_id, last_reward_sequence, loop_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-			if _, err = tx.Exec(query, userBonus.ID, userBonus.UserID, userBonus.LoginBonusID, userBonus.LastRewardSequence, userBonus.LoopCount, userBonus.CreatedAt, userBonus.UpdatedAt); err != nil {
-				return nil, err
+		var rewardItem LoginBonusRewardMaster
+		if ris, ok := lbidToRewardItems[bonus.ID]; ok {
+			for _, ri := range ris {
+				if ri.RewardSequence == userBonus.LastRewardSequence {
+					rewardItem = ri
+				}
 			}
 		} else {
-			query = "UPDATE user_login_bonuses SET last_reward_sequence=?, loop_count=?, updated_at=? WHERE id=?"
-			if _, err = tx.Exec(query, userBonus.LastRewardSequence, userBonus.LoopCount, userBonus.UpdatedAt, userBonus.ID); err != nil {
-				return nil, err
+			return nil, ErrLoginBonusRewardNotFound
+		}
+
+		ip := ItemParam{
+			userID:       userID,
+			itemID:       rewardItem.ItemID,
+			obtainAmount: rewardItem.Amount,
+			requestAt:    requestAt,
+		}
+		switch rewardItem.ItemType {
+		case 1, 2, 3, 4:
+			if mop, ok := mapObtainItems[rewardItem.ItemType]; ok {
+				newips := mop
+				newips = append(newips, ip)
+				mapObtainItems[rewardItem.ItemType] = newips
+			} else {
+				mapObtainItems[rewardItem.ItemType] = []ItemParam{ip}
 			}
+		default:
+			return nil, ErrInvalidItemType
 		}
 
 		sendLoginBonuses = append(sendLoginBonuses, userBonus)
+	}
+
+	// 配布処理
+	// itemTypeごとに実行
+	for k, v := range mapObtainItems {
+		_, _, _, err = h.bulkObtainItems(tx, k, v)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 進捗の保存
+	query = "INSERT INTO user_login_bonuses(id, user_id, login_bonus_id, last_reward_sequence, loop_count, created_at, updated_at) VALUES (:id, :user_id, :login_bonus_id, :last_reward_sequence, :loop_count, :created_at, :updated_at) ON DUPLICATE KEY UPDATE last_reward_sequence=VALUES(last_reward_sequence), loop_count=VALUES(loop_count), updated_at=VALUES(updated_at)"
+	if _, err = tx.NamedExec(query, sendLoginBonuses); err != nil {
+		return nil, err
 	}
 
 	return sendLoginBonuses, nil
@@ -1738,7 +1780,7 @@ func (h *Handler) receivePresent(c echo.Context) error {
 				mapObtainPresents[v.ItemType] = []ItemParam{ip}
 			}
 		default:
-			return errorResponse(c, http.StatusBadRequest, err)
+			return errorResponse(c, http.StatusBadRequest, ErrInvalidItemType)
 		}
 	}
 
