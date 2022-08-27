@@ -1533,6 +1533,30 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
+	var cardData struct {
+		BaseAmountPerSec int `db:"base_amount_per_sec"`
+		MaxLevel         int `db:"max_level"`
+		MaxAmountPerSec  int `db:"max_amount_per_sec"`
+		BaseExpPerLevel  int `db:"base_exp_per_level"`
+	}
+	query = `
+	SELECT im.amount_per_sec as 'base_amount_per_sec', im.max_level , im.max_amount_per_sec , im.base_exp_per_level
+	FROM item_masters as im
+	WHERE uc.id = ?
+	`
+	if err = h.DB.Get(&cardData, query, cardID); err != nil {
+		if err == sql.ErrNoRows {
+			return errorResponse(c, http.StatusNotFound, err)
+		}
+		return errorResponse(c, http.StatusInternalServerError, err)
+	}
+
+	// cardに情報を埋めていく
+	card.BaseAmountPerSec = cardData.BaseAmountPerSec
+	card.MaxLevel = cardData.MaxAmountPerSec
+	card.MaxAmountPerSec = cardData.MaxAmountPerSec
+	card.BaseExpPerLevel = cardData.BaseExpPerLevel
+
 	if card.Level == card.MaxLevel {
 		return errorResponse(c, http.StatusBadRequest, fmt.Errorf("target card is max level"))
 	}
