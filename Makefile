@@ -65,7 +65,6 @@ build-app:
 stop-app:
 	sudo systemctl stop $(SYSTEMCTL_APP)
 	sudo systemctl disable $(SYSTEMCTL_APP)
-	sudo systemctl disable $(SYSTEMCTL_APP)
 
 build-nginx:
 	-sudo mv $(NGINX_LOG) /tmp/nginx_access_$(DATE).log
