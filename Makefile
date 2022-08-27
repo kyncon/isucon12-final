@@ -9,7 +9,7 @@ NGINX_CONF:=$(APP_HOME)/nginx/nginx.conf
 NGINX_APP_CONF:=$(APP_HOME)/nginx/isuconquest.conf
 NGINX_LOG:=/var/log/nginx/access.log
 NGINX_ERR_LOG:=/var/log/nginx/error.log
-ALP_FORMAT:=/user/\d+/gacha/index,/user/\d+/gacha/draw/\d+/\d+,/user/\d+/present/index/\d+,/user/\d+/present/receive,/user/\d+/item,/user/\d+/card/addexp/\d+,/user/\d+/card,/user/\d+/reward,/user/\d+/home,/admin/user/\d+,/admin/user/\d+/ban
+ALP_FORMAT:=/user/.+/gacha/index,/user/.+/gacha/draw/.+/.+,/user/.+/present/index/.+,/user/.+/present/receive,/user/.+/item,/user/.+/card/addexp/.+,/user/.+/card,/user/.+/reward,/user/.+/home,/admin/user/.+,/admin/user/.+/ban
 
 # TODO: mysqlのコンフィグファイルの場所を指定する
 MYSQL_CONF:=$(APP_HOME)/mysql/mysqld.cnf
