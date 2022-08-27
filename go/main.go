@@ -1345,21 +1345,29 @@ func (h *Handler) receivePresent(c echo.Context) error {
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	// 配布処理
-	// TODO: bulk update
+	presentIds := make([]int64, 0, len(obtainPresent))
 	for i := range obtainPresent {
 		if obtainPresent[i].DeletedAt != nil {
 			return errorResponse(c, http.StatusInternalServerError, fmt.Errorf("received present"))
 		}
+		v := obtainPresent[i]
+		presentIds = append(presentIds, v.ID)
+	}
+	orgQuery := "UPDATE user_presents SET deleted_at=?, updated_at=? WHERE id IN (?)"
+	query, params, err = sqlx.In(orgQuery, requestAt, requestAt, presentIds)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, err)
+	}
+	if _, err := tx.NamedExec(query, params); err != nil {
+		return errorResponse(c, http.StatusInternalServerError, err)
+	}
 
+	// 配布処理
+	// TODO: bulk update
+	for i := range obtainPresent {
 		obtainPresent[i].UpdatedAt = requestAt
 		obtainPresent[i].DeletedAt = &requestAt
 		v := obtainPresent[i]
-		query = "UPDATE user_presents SET deleted_at=?, updated_at=? WHERE id=?"
-		_, err := tx.Exec(query, requestAt, requestAt, v.ID)
-		if err != nil {
-			return errorResponse(c, http.StatusInternalServerError, err)
-		}
 
 		_, _, _, err = h.obtainItem(tx, v.UserID, v.ItemID, v.ItemType, int64(v.Amount), requestAt)
 		if err != nil {
