@@ -510,7 +510,8 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 		}
 	}
 
-	// TODO: N+1
+	// itemTypeごとにまとめる
+	mapObtainItems := make(map[int][]ItemParam, 4)
 	for _, bonus := range loginBonuses {
 		var lbp LbParam
 		if v, ok := mapLoginBonusParms[bonus.ID]; ok {
@@ -518,7 +519,6 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 		} else {
 			return nil, fmt.Errorf("no parameter error")
 		}
-		initBonus := lbp.initBonus
 		// ボーナスの進捗取得
 		userBonus := lbp.userBonus
 
@@ -548,10 +548,60 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 			return nil, ErrLoginBonusRewardNotFound
 		}
 
-		_, _, _, err := h.obtainItem(tx, userID, rewardItem.ItemID, rewardItem.ItemType, rewardItem.Amount, requestAt)
+		ip := ItemParam{
+			userID:       userID,
+			itemID:       rewardItem.ItemID,
+			obtainAmount: rewardItem.Amount,
+			requestAt:    requestAt,
+		}
+		switch rewardItem.ItemType {
+		case 1, 2, 3, 4:
+			if mop, ok := mapObtainItems[rewardItem.ItemType]; ok {
+				newips := mop
+				newips = append(newips, ip)
+				mapObtainItems[rewardItem.ItemType] = newips
+			} else {
+				mapObtainItems[rewardItem.ItemType] = []ItemParam{ip}
+			}
+		default:
+			return nil, ErrInvalidItemType
+		}
+	}
+
+	// 配布処理
+	// itemTypeごとに実行
+	for k, v := range mapObtainItems {
+		_, _, _, err = h.bulkObtainItems(tx, k, v)
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// TODO: N+1
+	for _, bonus := range loginBonuses {
+		var lbp LbParam
+		if v, ok := mapLoginBonusParms[bonus.ID]; ok {
+			lbp = v
+		} else {
+			return nil, fmt.Errorf("no parameter error")
+		}
+		initBonus := lbp.initBonus
+		// ボーナスの進捗取得
+		userBonus := lbp.userBonus
+
+		// ボーナス進捗更新
+		if userBonus.LastRewardSequence < bonus.ColumnCount {
+			userBonus.LastRewardSequence++
+		} else {
+			if bonus.Looped {
+				userBonus.LoopCount += 1
+				userBonus.LastRewardSequence = 1
+			} else {
+				// 上限まで付与完了
+				continue
+			}
+		}
+		userBonus.UpdatedAt = requestAt
 
 		// 進捗の保存
 		if initBonus {
@@ -1713,7 +1763,7 @@ func (h *Handler) receivePresent(c echo.Context) error {
 				mapObtainPresents[v.ItemType] = []ItemParam{ip}
 			}
 		default:
-			return errorResponse(c, http.StatusBadRequest, err)
+			return errorResponse(c, http.StatusBadRequest, ErrInvalidItemType)
 		}
 	}
 
