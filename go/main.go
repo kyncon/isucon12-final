@@ -859,8 +859,7 @@ func (h *Handler) bulkObtainItems(tx *sqlx.Tx, itemType int, itemParams []ItemPa
 			}
 		}
 
-		// query = "UPDATE user_items SET amount=?, updated_at=? WHERE id=?"
-		query = "INSERT INTO user_items(`id`, `user_id`, `item_type`, `item_id`, `amount`, `created_at`, `updated_at`) VALUES(:id, :user_id, :item_type, :item_id, :amount, :created_at, :updated_at) ON DUPLICATE KEY UPDATE amount=VALUE(amount), updated_at=VALUE(updated_at)"
+		query = "INSERT INTO user_items(`id`, `user_id`, `item_type`, `item_id`, `amount`, `created_at`, `updated_at`) VALUES(:id, :user_id, :item_type, :item_id, :amount, :created_at, :updated_at) ON DUPLICATE KEY UPDATE amount=VALUES(amount), updated_at=VALUES(updated_at)"
 		if _, err := tx.NamedExec(query, insertUserItems); err != nil {
 			return nil, nil, nil, err
 		}
