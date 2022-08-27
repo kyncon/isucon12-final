@@ -389,8 +389,8 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 	}
 
 	// user_login_bonusesを一括取得
-	orgQuery := fmt.Sprintf("SELECT * FROM user_login_bonuses WHERE user_id='%d' AND login_bonus_id IN (?)", userID)
-	query, args, err := sqlx.In(orgQuery, loginBonusIds)
+	orgQuery := "SELECT * FROM user_login_bonuses WHERE user_id=? AND login_bonus_id IN (?)"
+	query, args, err := sqlx.In(orgQuery, userID, loginBonusIds)
 	if err != nil {
 		return nil, err
 	}
