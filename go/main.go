@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -1954,7 +1956,10 @@ func noContentResponse(c echo.Context, status int) error {
 
 // generateID uniqueなIDを生成する
 func (h *Handler) generateID() (int64, error) {
-	return time.Now().UnixNano(), nil
+	i := new(big.Int)
+	uuidValue := uuid.New().String()
+	i.SetString(strings.Replace(uuidValue, "-", "", 4), 16)
+	return i.Int64(), nil
 }
 
 // generateSessionID
