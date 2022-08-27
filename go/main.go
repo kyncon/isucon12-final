@@ -1530,9 +1530,11 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 	}
 
 	for _, g := range gainExps {
-		data := itemIDToData[g.ID]
-		data.GainedExp = g.GainedExp
-		itemIDToData[g.ID] = data
+		data, ok := itemIDToData[g.ID]
+		if ok {
+			data.GainedExp = g.GainedExp
+			itemIDToData[g.ID] = data
+		}
 	}
 
 	for _, v := range req.Items {
