@@ -519,7 +519,6 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 		} else {
 			return nil, fmt.Errorf("no parameter error")
 		}
-		initBonus := lbp.initBonus
 		// ボーナスの進捗取得
 		userBonus := lbp.userBonus
 
@@ -568,18 +567,6 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 			return nil, ErrInvalidItemType
 		}
 
-		// 進捗の保存
-		if initBonus {
-			query = "INSERT INTO user_login_bonuses(id, user_id, login_bonus_id, last_reward_sequence, loop_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-			if _, err = tx.Exec(query, userBonus.ID, userBonus.UserID, userBonus.LoginBonusID, userBonus.LastRewardSequence, userBonus.LoopCount, userBonus.CreatedAt, userBonus.UpdatedAt); err != nil {
-				return nil, err
-			}
-		} else {
-			query = "UPDATE user_login_bonuses SET last_reward_sequence=?, loop_count=?, updated_at=? WHERE id=?"
-			if _, err = tx.Exec(query, userBonus.LastRewardSequence, userBonus.LoopCount, userBonus.UpdatedAt, userBonus.ID); err != nil {
-				return nil, err
-			}
-		}
 		sendLoginBonuses = append(sendLoginBonuses, userBonus)
 	}
 
@@ -592,7 +579,11 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 		}
 	}
 
-	// query = "INSERT INTO user_login_bonuses(id, user_id, login_bonus_id, last_reward_sequence, loop_count, created_at, updated_at) VALUES (:id, :user_id, :login_bonus_id, :last_reward_sequence, :loop_count, :created_at, :updated_at) ON DUPLICATE KEY UPDATE last_reward_sequence=?, loop_count=?, updated_at=? WHERE id=?"
+	// 進捗の保存
+	query = "INSERT INTO user_login_bonuses(id, user_id, login_bonus_id, last_reward_sequence, loop_count, created_at, updated_at) VALUES (:id, :user_id, :login_bonus_id, :last_reward_sequence, :loop_count, :created_at, :updated_at) ON DUPLICATE KEY UPDATE last_reward_sequence=VALUES(last_reward_sequence), loop_count=VALUES(loop_count), updated_at=VALUES(updated_at)"
+	if _, err = tx.NamedExec(query, sendLoginBonuses); err != nil {
+		return nil, err
+	}
 
 	return sendLoginBonuses, nil
 }
