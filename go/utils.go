@@ -27,12 +27,6 @@ func SelectIn(db database, dest interface{}, query string, args ...interface{}) 
 		return err
 	}
 
-	for _, a := range nargs {
-		if a == nil {
-			return nil
-		}
-	}
-
 	return db.Select(dest, nquery, nargs...)
 }
 
