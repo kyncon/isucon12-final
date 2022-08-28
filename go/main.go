@@ -52,9 +52,7 @@ const (
 	SQLDirectory string = "../sql/"
 )
 
-var (
-	sessionCacher = newSessionCacher()
-)
+var sessionCacher = newSessionCacher()
 
 type Handler struct {
 	dbs     []*sqlx.DB
@@ -1960,13 +1958,9 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 	FROM user_items as ui
 	WHERE ui.item_type = 3 AND ui.id=(?) AND ui.user_id=?
 	`
-	query, args, err := sqlx.In(query, userItemIDs, userID)
-	if err != nil {
-		return errorResponse(c, http.StatusInternalServerError, err)
-	}
 
 	consumeUserItemData := make([]ConsumeUserItemData, 0, len(userItemIDs))
-	err = h.getDB(userID).Select(&consumeUserItemData, query, args...)
+	err = SelectIn(h.getDB(userID), &consumeUserItemData, query, userItemIDs, userID)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -1979,16 +1973,12 @@ func (h *Handler) addExpToCard(c echo.Context) error {
 	}
 
 	query = `SELECT id, gained_exp FROM item_masters WHERE id IN (?)`
-	query, args, err = sqlx.In(query, itemIDs)
-	if err != nil {
-		return errorResponse(c, http.StatusInternalServerError, err)
-	}
 
 	var gainExps []struct {
 		ID        int64 `db:"id"`
 		GainedExp int   `db:"gained_exp"`
 	}
-	err = h.adminDB.Select(&gainExps, query, args...)
+	err = SelectIn(h.adminDB, &gainExps, query, itemIDs)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
