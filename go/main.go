@@ -1584,6 +1584,7 @@ func (h *Handler) drawGacha(c echo.Context) error {
 		presents = append(presents, present)
 	}
 
+	fmt.Println(len(presents))
 	if len(presents) > 0 {
 		upInsertQuery := "INSERT INTO user_presents(id, user_id, sent_at, item_type, item_id, amount, present_message, created_at, updated_at) VALUES (:id, :user_id, :sent_at, :item_type, :item_id, :amount, :present_message, :created_at, :updated_at)"
 		_, err = tx.NamedExec(upInsertQuery, presents)
