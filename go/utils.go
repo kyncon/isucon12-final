@@ -11,7 +11,7 @@ type database interface {
 }
 
 func SelectIn(db database, dest any, query string, args ...any) error {
-	if hasEmptyList(args) {
+	if hasEmptyList(args...) {
 		return nil
 	}
 
