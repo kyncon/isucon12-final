@@ -7,19 +7,12 @@ import (
 )
 
 type database interface {
-	Select(dest interface{}, query string, args ...interface{}) error
+	Select(dest interface{}, query string, args ...any) error
 }
 
-func SelectIn(db database, dest interface{}, query string, args ...interface{}) error {
-	for _, a := range args {
-		if v, ok := asSliceForIn(a); ok {
-			if v.Len() == 0 /* listがlen=0のチェック */ {
-				return nil
-			}
-		}
-		if a == nil /* nilの場合もチェック */ {
-			return nil
-		}
+func SelectIn(db database, dest any, query string, args ...any) error {
+	if hasEmptyList(args...) {
+		return nil
 	}
 
 	nquery, nargs, err := sqlx.In(query, args...)
@@ -28,6 +21,20 @@ func SelectIn(db database, dest interface{}, query string, args ...interface{}) 
 	}
 
 	return db.Select(dest, nquery, nargs...)
+}
+
+func hasEmptyList(args ...any) bool {
+	for _, a := range args {
+		if v, ok := asSliceForIn(a); ok {
+			if v.Len() == 0 /* listがlen=0のチェック */ {
+				return true
+			}
+			if a == nil /* nilの場合もチェック */ {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func asSliceForIn(i interface{}) (v reflect.Value, ok bool) {
